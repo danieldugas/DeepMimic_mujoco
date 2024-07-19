@@ -25,7 +25,7 @@ def eval_dashboard_rollout(model, eval_env, n, run_name):
     while True:
         with th.no_grad():
             action, _states = model.predict(obs, deterministic=True)
-            obs_tensor = th.as_tensor(obs.reshape((1, -1)), dtype=th.float32)
+            obs_tensor = th.as_tensor(obs.reshape((1, -1)), dtype=th.float32, device=model.device)
             actions, values, log_probs = model.policy(obs_tensor, deterministic=True)
             val = values.detach().cpu().numpy().flatten()[0]
         frame = eval_env.render(mode='rgb_array')
@@ -101,7 +101,7 @@ if __name__ == "__main__":
     # train a policy
     # hyperparams
     TOT = 100*M
-    N_AG = 2
+    N_AG = 64
     HRZ = 128
     MINIB = 4
     EPOCHS = 12
@@ -112,7 +112,7 @@ if __name__ == "__main__":
     run = Run()
     policy_kwargs = dict(net_arch=[256, 128])
     eval_env = DPEnv()
-    envs = DummyVecEnv([lambda: DPEnv() for i in range(N_AG)])
+    envs = SubprocVecEnv([lambda: DPEnv() for i in range(N_AG)])
 #     envs = VecVideoRecorder( envs, os.path.expanduser(f"~/wasm_flagrun/{run.name}_videos"), record_video_trigger=lambda x: x % (1*M // N_AG) == 0, video_length=1000,)
     model = PPO(MlpPolicy, envs, policy_kwargs=policy_kwargs, verbose=1,
                     tensorboard_log=os.path.expanduser("~/wasm_flagrun/"),
