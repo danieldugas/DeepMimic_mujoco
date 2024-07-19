@@ -91,7 +91,8 @@ class EvalDashboardCallback(BaseCallback):
         n = self.num_timesteps
         model = self.model
         eval_env = self.eval_env
-        if n % 10000 == 0 or n == 2:
+        n_agents = self.num_timesteps // self.n_calls
+        if self.n_calls % (100000 // n_agents) == 0 or self.n_calls == 1:
             eval_dashboard_rollout(model, eval_env, n, self.run_name)
         return True
 
