@@ -63,6 +63,7 @@ def eval_dashboard_rollout(model, eval_env, n, run_name):
         os.makedirs(fig_dir_name, exist_ok=True)
         fig.savefig(fig_name)
         fig_paths.append(fig_name)
+        plt.close()
     # assemble frames into a video
     import cv2
     import glob
@@ -90,6 +91,8 @@ def eval_dashboard_rollout(model, eval_env, n, run_name):
         f.write(f"{n},{ep_len},{ep_rew}\n")
     print("Logged to", log_path)
 
+
+
 class EvalDashboardCallback(BaseCallback):
     def __init__(self, eval_env, run_name, verbose: int = 0):
         super().__init__(verbose)
@@ -111,8 +114,8 @@ if __name__ == "__main__":
     # train a policy
     # hyperparams
     TOT = 100*M
-    N_AG = 64
-    HRZ = 128
+    N_AG = 128
+    HRZ = 64
     MINIB = 4
     EPOCHS = 12
     LR = 0.00025
