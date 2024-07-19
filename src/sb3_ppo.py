@@ -12,7 +12,7 @@ from stable_baselines3.ppo import MlpPolicy
 
 from stable_baselines3.common.callbacks import BaseCallback
 
-def eval_dashboard_rollout(model, eval_env, n):
+def eval_dashboard_rollout(model, eval_env, n, run_name):
     """ Collect an episode and plot it """
     from matplotlib import pyplot as plt
     import numpy as np
@@ -20,7 +20,7 @@ def eval_dashboard_rollout(model, eval_env, n):
     obs = eval_env.reset()
     ep_rew = 0
     fig_paths = []
-    fig_dir_name = "/tmp/sb3_eval_" + str(n) + "_" + str(np.random.choice(1000))
+    fig_dir_name = os.path.expanduser("/tmp/sb3_eval_" + str(n) + "_" + run_name)
     while True:
         action, _states = model.predict(obs, deterministic=True)
         frame = eval_env.render(mode='rgb_array')
@@ -65,26 +65,27 @@ def eval_dashboard_rollout(model, eval_env, n):
         height, width, layers = img.shape
         size = (width, height)
         img_array.append(img)
-    video_path =  fig_dir_name + '/project.mp4'
+    video_dir = os.path.expanduser("~/deep_mimic/" + run_name + "_videos")
+    video_path =  video_dir + '/global_step_{}.mp4'.format(n)
+    os.makedirs(video_dir, exist_ok=True)
     out = cv2.VideoWriter(video_path, cv2.VideoWriter_fourcc(*'MP4V'), 1, size)
     for i in range(len(img_array)):
         out.write(img_array[i])
     out.release()
     print("Saved video to", video_path)
 
-
-
 class EvalDashboardCallback(BaseCallback):
-    def __init__(self, eval_env, verbose: int = 0):
+    def __init__(self, eval_env, run_name, verbose: int = 0):
         super().__init__(verbose)
         self.eval_env = eval_env
+        self.run_name = run_name
 
     def _on_step(self) -> bool:
         n = self.num_timesteps
         model = self.model
         eval_env = self.eval_env
         if n % 10000 == 0 or n == 2:
-            eval_dashboard_rollout(model, eval_env, n)
+            eval_dashboard_rollout(model, eval_env, n, self.run_name)
         return True
 
 if __name__ == "__main__":
@@ -111,7 +112,7 @@ if __name__ == "__main__":
                     n_steps=HRZ, learning_rate=LR)
     print("Begin Learn")
     print("-----------")
-    model.learn(total_timesteps=100*M, tb_log_name=run.name, callback=EvalDashboardCallback(eval_env))
+    model.learn(total_timesteps=100*M, tb_log_name=run.name, callback=EvalDashboardCallback(eval_env, run.name))
     model.save("~/wasm_flagrun/" + run.name)
 
     del model # remove to demonstrate saving and loading
