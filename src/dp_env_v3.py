@@ -56,6 +56,9 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         self.idx_curr = -1
         self.idx_tmp_count = -1
 
+        self.episode_reward = 0
+        self.episode_length = 0
+
         mujoco_env.MujocoEnv.__init__(self, xml_file_path, 6)
         utils.EzPickle.__init__(self)
 
@@ -124,10 +127,13 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 
         info = dict(reward_obs=reward_obs, reward_acs=reward_acs, reward_forward=reward_forward)
         '''
-        # reward = self.calc_config_reward()
-        reward = reward_alive
+        reward = self.calc_config_reward()
+        # reward = reward_alive
         info = dict()
         done = self.is_done()
+
+        self.episode_reward += reward
+        self.episode_length += 1
 
         return observation, reward, done, info
 
@@ -144,6 +150,11 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 
     def get_time(self):
         return self.sim.data.time
+
+    def reset(self):
+        self.episode_reward = 0
+        self.episode_length = 0
+        return self.reset_model()
 
     def reset_model(self):
         self.reference_state_init()
@@ -169,6 +180,19 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         # self.viewer.cam.distance = self.model.stat.extent * 1.0
         # self.viewer.cam.lookat[2] = 2.0
         # self.viewer.cam.elevation = -20
+
+    def render(self, mode=None): # needed by video rec
+        output = mujoco_env.MujocoEnv.render(self, mode=mode)
+        if mode == "rgb_array":
+            # add reward to the screen
+            string = "{:>5} {:>7.2f}".format(self.episode_length, self.episode_reward)
+            # using opencv put_text:
+            import cv2
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            textmask = np.array(output)
+            cv2.putText(textmask, string, (40, 40), font, 1., (255, 255, 255), 2, cv2.LINE_AA)
+            output = textmask
+        return output
 
 if __name__ == "__main__":
     env = DPEnv()

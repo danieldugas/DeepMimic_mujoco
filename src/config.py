@@ -4,9 +4,11 @@ class Config(object):
     all_motions = ['backflip', 'cartwheel', 'crawl', 'dance_a', 'dance_b', 'getup_facedown'
                    'getup_faceup', 'jump', 'kick', 'punch', 'roll', 'run', 'spin', 'spinkick',
                    'walk']
-    curr_path = getcwd()
-    # motion = 'spinkick'
-    motion = 'dance_b'
+    # curr_path = getcwd()
+    import os
+    curr_path = os.path.expanduser("~/Code/DeepMimic_mujoco/src")
+    motion = 'spinkick'
+    # motion = 'dance_b'
     env_name = "dp_env_v3"
 
     motion_folder = '/mujoco/motions'
