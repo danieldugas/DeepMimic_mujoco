@@ -80,6 +80,15 @@ def eval_dashboard_rollout(model, eval_env, n, run_name):
         out.write(img_array[i])
     out.release()
     print("Saved video to", video_path)
+    # append length and reward to log
+    ep_len = len(buffer)
+    log_path = video_dir + '/log.csv'
+    if not os.path.exists(log_path):
+        with open(log_path, 'w') as f:
+            f.write("global_step,ep_len,ep_rew\n")
+    with open(log_path, 'a') as f:
+        f.write(f"{n},{ep_len},{ep_rew}\n")
+    print("Logged to", log_path)
 
 class EvalDashboardCallback(BaseCallback):
     def __init__(self, eval_env, run_name, verbose: int = 0):
