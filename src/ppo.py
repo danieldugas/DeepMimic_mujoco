@@ -1,3 +1,9 @@
+"""
+pip install mujoco-py pyquaternion joblib stable-baselines==2.10.2 gym==0.15.4 torch tensorflow==1.13.1
+pip install "cython<3"
+pip install protobuf==3.19.6
+"""
+
 import os
 import time
 
@@ -13,8 +19,8 @@ if __name__ == "__main__":
     # train a policy
     # hyperparams
     TOT = 100*M
-    N_AG = 4
-    HRZ = 32
+    N_AG = 32
+    HRZ = 128
     MINIB = 4
     EPOCHS = 12
     LR = 0.00025
