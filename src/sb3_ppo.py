@@ -90,7 +90,23 @@ def eval_dashboard_rollout(model, eval_env, n, run_name):
     with open(log_path, 'a') as f:
         f.write(f"{n},{ep_len},{ep_rew}\n")
     print("Logged to", log_path)
-
+    # load logfile, plot, and save plot
+    # use numpy to load the csv
+    plot_path = video_dir + '/rew_plot.png'
+    log = np.loadtxt(log_path, delimiter=',', skiprows=1)
+    if len(log.shape) == 1: # only one item, nothing to plot
+        log = log.reshape((1, -1))
+    fig, ax = plt.subplots(1, 1)
+    ax.plot(log[:, 0], log[:, 2])
+    ax.set_xlabel("Global Step")
+    fig.savefig(plot_path)
+    plt.close()
+    fig, ax = plt.subplots(1, 1)
+    len_plot_path = video_dir + '/len_plot.png'
+    ax.plot(log[:, 0], log[:, 1])
+    ax.set_xlabel("Global Step")
+    fig.savefig(len_plot_path)
+    plt.close()
 
 
 class EvalDashboardCallback(BaseCallback):
