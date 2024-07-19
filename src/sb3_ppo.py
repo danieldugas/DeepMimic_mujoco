@@ -16,23 +16,29 @@ def eval_dashboard_rollout(model, eval_env, n, run_name):
     """ Collect an episode and plot it """
     from matplotlib import pyplot as plt
     import numpy as np
+    import torch as th
     buffer = []
     obs = eval_env.reset()
     ep_rew = 0
     fig_paths = []
     fig_dir_name = os.path.expanduser("/tmp/sb3_eval_" + str(n) + "_" + run_name)
     while True:
-        action, _states = model.predict(obs, deterministic=True)
+        with th.no_grad():
+            action, _states = model.predict(obs, deterministic=True)
+            obs_tensor = th.as_tensor(obs.reshape((1, -1)), dtype=th.float32)
+            actions, values, log_probs = model.policy(obs_tensor, deterministic=True)
+            val = values.detach().cpu().numpy().flatten()[0]
         frame = eval_env.render(mode='rgb_array')
         obs, rewards, dones, info = eval_env.step(action)
         ep_rew += rewards
-        buffer.append((obs, action, rewards, dones, info, ep_rew * 1., frame))
+        buffer.append((obs, action, rewards, dones, info, ep_rew * 1., val, frame))
         if dones:
             break
     # make frames
-    for i, (obs, action, rewards, dones, info, ep_rew, frame) in enumerate(buffer):
+    for i, (obs, action, rewards, dones, info, ep_rew, val, frame) in enumerate(buffer):
         rew_curve = [x[2] for x in buffer[:i+1]]
         ep_rew_curve = [x[5] for x in buffer[:i+1]]
+        val_curve = [x[6] for x in buffer[:i+1]]
         # plot actions top left, frame top right, rewards bottom left, obs, bottom right
         fig, ax = plt.subplots(2, 2)
         action_range = np.arange(len(action))
@@ -45,6 +51,7 @@ def eval_dashboard_rollout(model, eval_env, n, run_name):
         ax[1, 0].axhline(0, color='black', lw=1)
         ax[1, 0].plot(ep_rew_curve)
         ax[1, 0].plot(rew_curve)
+        ax[1, 0].plot(val_curve)
         ax[1, 1].axhline(0, color='black', lw=1)
         obs_range = np.arange(len(obs))
         for di in range(-5, 0):
