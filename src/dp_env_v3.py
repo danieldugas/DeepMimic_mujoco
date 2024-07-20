@@ -32,6 +32,7 @@ def mass_center(model, sim):
     return (np.sum(mass * xpos, 0) / np.sum(mass))[0]
 
 class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
+    version = "v0.2.normalized_vel"
     def __init__(self):
         xml_file_path = Config.xml_path
 
