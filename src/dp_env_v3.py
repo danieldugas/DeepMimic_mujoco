@@ -65,6 +65,7 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
     def _get_obs(self):
         position = self.sim.data.qpos.flat.copy()[7:] # ignore root joint
         velocity = self.sim.data.qvel.flat.copy()[6:] # ignore root joint
+        velocity = np.array(velocity) * 0.1
         return np.concatenate((position, velocity))
 
     def reference_state_init(self):

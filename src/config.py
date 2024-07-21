@@ -7,7 +7,7 @@ class Config(object):
     # curr_path = getcwd()
     import os
     curr_path = os.path.expanduser("~/Code/DeepMimic_mujoco/src")
-    motion = 'spinkick'
+    motion = 'walk'
     # motion = 'dance_b'
     env_name = "dp_env_v3"
 

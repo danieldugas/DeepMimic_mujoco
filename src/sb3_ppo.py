@@ -130,10 +130,10 @@ if __name__ == "__main__":
     # train a policy
     # hyperparams
     TOT = 100*M
-    N_AG = 128
-    HRZ = 64
-    MINIB = 4
-    EPOCHS = 12
+    N_AG = 64
+    HRZ = 1024
+    MINIB = 16
+    EPOCHS = 20
     LR = 0.00025
     LOG_FREQ = 1*M // N_AG # log every 1M global steps
     class Run:
@@ -152,3 +152,67 @@ if __name__ == "__main__":
     model.save("~/wasm_flagrun/" + run.name)
 
     del model # remove to demonstrate saving and loading
+
+requirements = """
+absl-py==2.1.0
+cachetools==5.4.0
+certifi==2024.7.4
+cffi==1.15.1
+charset-normalizer==3.3.2
+cloudpickle==1.2.2
+cycler==0.11.0
+Cython==0.29.37
+Farama-Notifications==0.0.4
+fasteners==0.19
+fonttools==4.38.0
+future==1.0.0
+glfw==2.7.0
+google-auth==2.32.0
+google-auth-oauthlib==0.4.6
+grpcio==1.62.2
+gym==0.15.4
+gymnasium==0.28.1
+idna==3.7
+imageio==2.31.2
+importlib-metadata==6.7.0
+jax-jumpy==1.0.0
+kiwisolver==1.4.5
+Markdown==3.4.4
+MarkupSafe==2.1.5
+matplotlib==3.5.3
+mujoco-py==2.1.2.14
+numpy==1.21.6
+nvidia-cublas-cu11==11.10.3.66
+nvidia-cuda-nvrtc-cu11==11.7.99
+nvidia-cuda-runtime-cu11==11.7.99
+nvidia-cudnn-cu11==8.5.0.96
+oauthlib==3.2.2
+opencv-python==4.10.0.84
+packaging==24.0
+pandas==1.3.5
+Pillow==9.5.0
+protobuf==3.20.3
+pyasn1==0.5.1
+pyasn1-modules==0.3.0
+pycparser==2.21
+pyglet==1.3.2
+pyparsing==3.1.2
+pyquaternion==0.9.9
+python-dateutil==2.9.0.post0
+pytz==2024.1
+requests==2.31.0
+requests-oauthlib==2.0.0
+rsa==4.9
+scipy==1.7.3
+Shimmy==1.1.0
+six==1.16.0
+stable-baselines3==2.0.0
+tensorboard==2.11.2
+tensorboard-data-server==0.6.1
+tensorboard-plugin-wit==1.8.1
+torch==1.13.1
+typing_extensions==4.7.1
+urllib3==2.0.7
+Werkzeug==2.2.3
+zipp==3.15.0
+"""
