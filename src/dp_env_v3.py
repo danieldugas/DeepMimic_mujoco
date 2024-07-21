@@ -14,6 +14,7 @@ from gym import utils
 
 from config import Config
 from pyquaternion import Quaternion
+import py3dtf
 
 from transformations import quaternion_from_euler
 
@@ -32,7 +33,7 @@ def mass_center(model, sim):
     return (np.sum(mass * xpos, 0) / np.sum(mass))[0]
 
 class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.2.normalized_vel"
+    version = "v0.2.normalized_vel_extended_obs"
     def __init__(self):
         xml_file_path = Config.xml_path
 
@@ -63,11 +64,76 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         mujoco_env.MujocoEnv.__init__(self, xml_file_path, 6)
         utils.EzPickle.__init__(self)
 
+        # self.nameindex = {}
+        # current_start = 0
+        # for i, c in enumerate(self.model.names):
+        #     if c == 0 or c == b'':
+        #         word = bytes(self.model.names[current_start:i]).decode('utf-8')
+        #         self.nameindex[current_start] = word
+        #         current_start = i + 1
+
     def _get_obs(self):
         position = self.sim.data.qpos.flat.copy()[7:] # ignore root joint
         velocity = self.sim.data.qvel.flat.copy()[6:] # ignore root joint
         velocity = np.array(velocity) * 0.1
-        return np.concatenate((position, velocity))
+        torso = self.get_torso_obs()
+        foot_contact = self.get_foot_contact_obs()
+        return np.concatenate((position, velocity, torso, foot_contact))
+
+    def get_torso_obs(self):
+        b = self.model.body_name2id("chest")
+        torso_xyz = np.array(self.data.body_xpos[b])
+        torso_wxyz = np.array(self.data.body_xquat[b])
+        torso_vel = np.array(self.data.cvel[b][3:])
+        vr1, vr2, vr3 = np.array(self.data.cvel[b][:3])
+        w, x, y, z = torso_wxyz
+        r, p, y = py3dtf.Quaternion(x, y, z, w).to_rpy()
+        torso_rpy = np.array([r, p, y])
+        BDY = np.array([ # BDYVEC frame: frame where x points forward from chest, horizontal to ground
+            [np.cos(-torso_rpy[2]), -np.sin(-torso_rpy[2]), 0],
+            [np.sin(-torso_rpy[2]),  np.cos(-torso_rpy[2]), 0],
+            [0, 0, 1]
+        ])
+        vx = BDY[0][0] * torso_vel[0] + BDY[0][1] * torso_vel[1] + BDY[0][2] * torso_vel[2];
+        vy = BDY[1][0] * torso_vel[0] + BDY[1][1] * torso_vel[1] + BDY[1][2] * torso_vel[2];
+        vz = BDY[2][0] * torso_vel[0] + BDY[2][1] * torso_vel[1] + BDY[2][2] * torso_vel[2];
+        return np.array([
+            torso_rpy[0] * 0.1,
+            torso_rpy[1] * 0.1,
+            vx * 0.1,
+            vy * 0.1,
+            vz * 0.1,
+            vr1 * 0.1,
+            vr2 * 0.1,
+            vr3 * 0.1,
+        ])
+    
+    def get_foot_contact_obs(self):
+        rfoot_name = "right_ankle"
+        lfoot_name = "left_ankle"
+        floor_name = "floor"
+        lfoot_floor_contact = 0.
+        rfoot_floor_contact = 0.
+        lfoot_other_contact = 0.
+        rfoot_other_contact = 0.
+        for c in self.data.contact:
+            name1 = self.model.geom_id2name(c.geom1)
+            name2 = self.model.geom_id2name(c.geom2)
+            floortouch = name1 == floor_name or name2 == floor_name
+            if (name1 == rfoot_name or name2 == rfoot_name):
+                if floortouch:
+                    rfoot_floor_contact = 1.
+                else:
+                    rfoot_other_contact = 1.
+            if (name1 == lfoot_name or name2 == lfoot_name):
+                if floortouch:
+                    lfoot_floor_contact = 1.
+                else:
+                    lfoot_other_contact = 1.
+        return np.array([
+            rfoot_floor_contact,
+            lfoot_floor_contact,
+        ])
 
     def reference_state_init(self):
         self.idx_init = random.randint(0, self.mocap_data_len-1)

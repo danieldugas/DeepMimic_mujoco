@@ -1,5 +1,5 @@
 """
-pip install mujoco-py stable-baselines3 "cython<3" gym==0.15.4 pyquaternion shimmy tensorboard
+pip install mujoco-py stable-baselines3 "cython<3" gym==0.15.4 pyquaternion shimmy tensorboard py3dtf
 """
 import os
 import time
@@ -16,6 +16,8 @@ from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecVide
 from stable_baselines3.ppo import MlpPolicy
 
 from stable_baselines3.common.callbacks import BaseCallback
+
+DBG_NO_WANDB = False
 
 def eval_dashboard_rollout(model, eval_env, n, run_name):
     """ Collect an episode and plot it """
@@ -96,11 +98,12 @@ def eval_dashboard_rollout(model, eval_env, n, run_name):
         f.write(f"{n},{ep_len},{ep_rew}\n")
     print("Logged to", log_path)
     # log to wandb
-    wandb.log({
-        "eval_episode_length": ep_len,
-        "eval_episode_reward": ep_rew,
-        "eval_global_step": n,
-    })
+    if not DBG_NO_WANDB:
+        wandb.log({
+            "eval_episode_length": ep_len,
+            "eval_episode_reward": ep_rew,
+            "eval_global_step": n,
+        })
     # load logfile, plot, and save plot
     # use numpy to load the csv
     plot_path = video_dir + '/rew_plot.png'
@@ -136,7 +139,6 @@ class EvalDashboardCallback(BaseCallback):
         return True
 
 if __name__ == "__main__":
-
     M = 1000000
     # train a policy
     # hyperparams
@@ -149,9 +151,9 @@ if __name__ == "__main__":
     LOG_FREQ = 1*M // N_AG # log every 1M global steps
     policy_kwargs = dict(net_arch=[256, 128])
     # run info
-    # class Run:
-    #     name = "test" + time.strftime("%Y%m%d-%H%M_%S")
-    # run = Run()
+    class Run:
+        name = "test" + time.strftime("%Y%m%d-%H%M_%S")
+    run = Run()
     batch_size = HRZ * N_AG
     minibatch_size = batch_size // MINIB
     config = {
@@ -168,17 +170,17 @@ if __name__ == "__main__":
         "epochs": EPOCHS,
         "machine_name": os.environ.get("MACHINE_NAME", "unknown"),
     }
-    wandb.login()
-    run = wandb.init(
-        project="deep_mimic",
-        config=config,
-        sync_tensorboard=True,  # auto-upload sb3's tensorboard metrics
-        monitor_gym=True,  # auto-upload the videos of agents playing the game
-        save_code=True,  # optional
-    )
+    if not DBG_NO_WANDB:
+        wandb.login()
+        run = wandb.init(
+            project="deep_mimic",
+            config=config,
+            sync_tensorboard=True,  # auto-upload sb3's tensorboard metrics
+            monitor_gym=True,  # auto-upload the videos of agents playing the game
+            save_code=True,  # optional
+        )
     eval_env = DPEnv()
     envs = SubprocVecEnv([lambda: DPEnv() for i in range(N_AG)])
-#     envs = VecVideoRecorder( envs, os.path.expanduser(f"~/wasm_flagrun/{run.name}_videos"), record_video_trigger=lambda x: x % (1*M // N_AG) == 0, video_length=1000,)
     model = PPO(MlpPolicy, envs, policy_kwargs=policy_kwargs, verbose=1,
                     tensorboard_log=os.path.expanduser("~/tensorboard/"),
                     n_steps=HRZ, learning_rate=LR, n_epochs=EPOCHS, batch_size=minibatch_size)
@@ -228,6 +230,7 @@ packaging==24.0
 pandas==1.3.5
 Pillow==9.5.0
 protobuf==3.20.3
+py3dtf==0.2
 pyasn1==0.5.1
 pyasn1-modules==0.3.0
 pycparser==2.21
