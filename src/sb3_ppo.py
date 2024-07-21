@@ -4,6 +4,10 @@ pip install mujoco-py stable-baselines3 "cython<3" gym==0.15.4 pyquaternion shim
 import os
 import time
 import wandb
+# this stops a strange bug where after hours of training tkinter causes a crash in the workers
+if __name__ == "__main__":
+    import matplotlib
+    matplotlib.use('Agg')
 
 from dp_env_v3 import DPEnv
 
@@ -41,7 +45,7 @@ def eval_dashboard_rollout(model, eval_env, n, run_name):
         ep_rew_curve = [x[5] for x in buffer[:i+1]]
         val_curve = [x[6] for x in buffer[:i+1]]
         # plot actions top left, frame top right, rewards bottom left, obs, bottom right
-        fig, ax = plt.subplots(2, 2)
+        fig, ax = plt.subplots(2, 2, num="eval")
         action_range = np.arange(len(action))
         ax[0, 0].axhline(0, color='black', lw=1)
         for di in range(-5, 0):
@@ -77,7 +81,7 @@ def eval_dashboard_rollout(model, eval_env, n, run_name):
     video_dir = os.path.expanduser("~/deep_mimic/" + run_name + "_videos")
     video_path =  video_dir + '/global_step_{}.mp4'.format(n)
     os.makedirs(video_dir, exist_ok=True)
-    out = cv2.VideoWriter(video_path, cv2.VideoWriter_fourcc(*'MP4V'), 1, size)
+    out = cv2.VideoWriter(video_path, cv2.VideoWriter_fourcc(*'mp4v'), 1, size)
     for i in range(len(img_array)):
         out.write(img_array[i])
     out.release()
@@ -139,7 +143,7 @@ if __name__ == "__main__":
     TOT = 100*M
     N_AG = 32
     HRZ = 4096
-    MINIB = 4
+    MINIB = 512
     EPOCHS = 20
     LR = 0.00025
     LOG_FREQ = 1*M // N_AG # log every 1M global steps
