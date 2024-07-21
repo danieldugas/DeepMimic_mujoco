@@ -147,7 +147,7 @@ if __name__ == "__main__":
     HRZ = 4096
     MINIB = 512
     EPOCHS = 20
-    LR = 0.00025
+    LR = 0.0004
     LOG_FREQ = 1*M // N_AG # log every 1M global steps
     policy_kwargs = dict(net_arch=[256, 128])
     # run info
