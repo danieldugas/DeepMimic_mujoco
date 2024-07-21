@@ -121,6 +121,9 @@ def eval_dashboard_rollout(model, eval_env, n, run_name):
     ax.set_xlabel("Global Step")
     fig.savefig(len_plot_path)
     plt.close()
+    # save model if best
+    if np.max(log[:, 2]) == log[-1, 2]:
+        model.save(video_dir + "/" + run.name + "_best")
 
 
 class EvalDashboardCallback(BaseCallback):
@@ -187,7 +190,7 @@ if __name__ == "__main__":
     print("Begin Learn")
     print("-----------")
     model.learn(total_timesteps=100*M, tb_log_name=run.name, callback=EvalDashboardCallback(eval_env, run.name))
-    model.save("~/deep_mimic/" + run.name)
+    model.save(os.path.expanduser("~/deep_mimic/" + run.name))
 
     del model # remove to demonstrate saving and loading
 
