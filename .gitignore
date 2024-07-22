@@ -29,3 +29,6 @@ lib/
 external/
 Backup/
 data/intermediate/
+
+src/wandb/
+wandb/

@@ -164,6 +164,7 @@ if __name__ == "__main__":
         "total_timesteps": TOT,
         "env_name": "deep_mimic_mujoco",
         "version": DPEnv.version,
+        "env_cfg": DPEnv.CFG.__dict__.copy(),
         "arch": policy_kwargs["net_arch"],
         "n_agents": N_AG,
         "horizon": HRZ,

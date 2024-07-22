@@ -32,8 +32,18 @@ def mass_center(model, sim):
     xpos = sim.data.xipos
     return (np.sum(mass * xpos, 0) / np.sum(mass))[0]
 
+class DPEnvConfig:
+    def __init__(self):
+        self.MAX_EP_LENGTH = 1000
+        self.VEL_OBS_SCALE = 0.1
+        self.FRC_OBS_SCALE = 0.001
+        self.ADD_FOOT_CONTACT_OBS = True
+        self.ADD_TORSO_OBS = True
+        self.ADD_JOINT_FORCE_OBS = True
+
 class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.2.normalized_vel_extended_obs"
+    version = "v0.3"
+    CFG = DPEnvConfig()
     def __init__(self):
         xml_file_path = Config.xml_path
 
@@ -75,12 +85,16 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
     def _get_obs(self):
         position = self.sim.data.qpos.flat.copy()[7:] # ignore root joint
         velocity = self.sim.data.qvel.flat.copy()[6:] # ignore root joint
-        velocity = np.array(velocity) * 0.1
+        S = self.CFG.VEL_OBS_SCALE
+        velocity = np.array(velocity) * S
         torso = self.get_torso_obs()
         foot_contact = self.get_foot_contact_obs()
-        return np.concatenate((position, velocity, torso, foot_contact))
+        joint_force = self.get_joint_force_obs()
+        return np.concatenate((position, velocity, torso, foot_contact, joint_force))
 
     def get_torso_obs(self):
+        if not self.CFG.ADD_TORSO_OBS:
+            return []
         b = self.model.body_name2id("chest")
         torso_xyz = np.array(self.data.body_xpos[b])
         torso_wxyz = np.array(self.data.body_xquat[b])
@@ -97,18 +111,21 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         vx = BDY[0][0] * torso_vel[0] + BDY[0][1] * torso_vel[1] + BDY[0][2] * torso_vel[2];
         vy = BDY[1][0] * torso_vel[0] + BDY[1][1] * torso_vel[1] + BDY[1][2] * torso_vel[2];
         vz = BDY[2][0] * torso_vel[0] + BDY[2][1] * torso_vel[1] + BDY[2][2] * torso_vel[2];
+        S = self.CFG.VEL_OBS_SCALE
         return np.array([
-            torso_rpy[0] * 0.1,
-            torso_rpy[1] * 0.1,
-            vx * 0.1,
-            vy * 0.1,
-            vz * 0.1,
-            vr1 * 0.1,
-            vr2 * 0.1,
-            vr3 * 0.1,
+            torso_rpy[0] * S,
+            torso_rpy[1] * S,
+            vx * S,
+            vy * S,
+            vz * S,
+            vr1 * S,
+            vr2 * S,
+            vr3 * S,
         ])
     
     def get_foot_contact_obs(self):
+        if not self.CFG.ADD_FOOT_CONTACT_OBS:
+            return []
         rfoot_name = "right_ankle"
         lfoot_name = "left_ankle"
         floor_name = "floor"
@@ -134,6 +151,16 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             rfoot_floor_contact,
             lfoot_floor_contact,
         ])
+
+    def get_joint_force_obs(self):
+        if not self.CFG.ADD_JOINT_FORCE_OBS:
+            return []
+        # https://github.com/google-deepmind/mujoco/issues/1095#issuecomment-1761836433
+        # qfrc_unc was renamed qfrc_smooth in later versions
+        jf = self.data.qfrc_unc.flat.copy() + self.data.qfrc_constraint.flat.copy()
+        S = self.CFG.FRC_OBS_SCALE
+        jf = np.array(jf) * S
+        return jf
 
     def reference_state_init(self):
         self.idx_init = random.randint(0, self.mocap_data_len-1)
@@ -210,6 +237,9 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         xpos = self.sim.data.xipos
         z_com = (np.sum(mass * xpos, 0) / np.sum(mass))[2]
         done = bool((z_com < 0.7) or (z_com > 2.0))
+        if self.CFG.MAX_EP_LENGTH != 0:
+            if self.episode_length >= self.CFG.MAX_EP_LENGTH:
+                done = True
         return done
 
     def goto(self, pos):
