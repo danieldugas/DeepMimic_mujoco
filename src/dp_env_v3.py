@@ -258,7 +258,6 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         self.reference_state_init()
         qpos = self.mocap.data_config[self.idx_init]
         qvel = self.mocap.data_vel[self.idx_init]
-        # qvel = self.init_qvel
         self.set_state(qpos, qvel)
         observation = self._get_obs()
         self.idx_tmp_count = -self.step_len
@@ -319,6 +318,6 @@ if __name__ == "__main__":
         env.sim.step()
         env.calc_config_reward()
         print(env._get_obs())
-        env.render()
+        env.render(mode="human")
 
     # vid_save.close()
