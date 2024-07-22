@@ -162,9 +162,10 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         jf = np.array(jf) * S
         return jf
 
-    def reference_state_init(self):
+    def reference_state_init(self, idx_init=None):
         self.idx_init = random.randint(0, self.mocap_data_len-1)
-        # self.idx_init = 0
+        if idx_init is not None:
+            self.idx_init = idx_init
         self.idx_curr = self.idx_init
         self.idx_tmp_count = 0
 
@@ -254,8 +255,8 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         self.episode_length = 0
         return self.reset_model()
 
-    def reset_model(self):
-        self.reference_state_init()
+    def reset_model(self, idx_init=None):
+        self.reference_state_init(idx_init=idx_init)
         qpos = self.mocap.data_config[self.idx_init]
         qvel = self.mocap.data_vel[self.idx_init]
         self.set_state(qpos, qvel)

@@ -11,7 +11,7 @@ def log_actobs(qlog, obs, a, r, frame, time, env_name, max_frames, enabled, ZERO
         if ONEACT:
             a = np.ones_like(a)
             postfix = "one_"
-        qlog.append([len(obs)] + list(obs) + [len(a)] + list(a) + [1] + [r])
+        qlog.append([time] + [len(obs)] + list(obs) + [len(a)] + list(a) + [1] + [r])
         if len(qlog) >= max_frames:
             qlog = np.array(qlog)
             path = "/home/daniel/{}_{}qlog.csv".format(env_name, postfix)
@@ -24,6 +24,7 @@ if __name__ == "__main__":
     env = DPEnv()
     pi = ExtractedPolicy()
     obs = env.reset()
+    obs = env.reset_model(idx_init=14)
     ep_rew = 0
     qlog = []
     for i in range(1000):
@@ -31,7 +32,7 @@ if __name__ == "__main__":
         obs = obs[:66] # remove the last values that weren't present during training
         action = pi.act(obs)
         action = np.clip(action, -0.5, 0.5)
-        log_actobs(qlog, obs, action, ep_rew, i, i * 0.1, env_name="deepmimic", max_frames=100, enabled=False, ZEROACT=False, ONEACT=False)
+        log_actobs(qlog, obs, action, ep_rew, i, env.get_time(), env_name="deepmimic", max_frames=100, enabled=False, ZEROACT=False, ONEACT=False)
         obs, reward, done, info = env.step(action)
         ep_rew += reward
         if done:
