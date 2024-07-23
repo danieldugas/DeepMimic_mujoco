@@ -141,7 +141,20 @@ class EvalDashboardCallback(BaseCallback):
             eval_dashboard_rollout(model, eval_env, n, self.run_name)
         return True
 
+def parse_reason():
+    import sys
+    reason = ""
+    if len(sys.argv) > 1:
+        reason = sys.argv[1]
+    if len(sys.argv) > 2:
+        raise ValueError("Too many arguments")
+    print("Reason: " + reason)
+    if reason == "":
+        raise ValueError("Please provide a reason for this run")
+    return reason
+
 if __name__ == "__main__":
+    reason = parse_reason()
     M = 1000000
     # train a policy
     # hyperparams
@@ -160,6 +173,7 @@ if __name__ == "__main__":
     batch_size = HRZ * N_AG
     minibatch_size = batch_size // MINIB
     config = {
+        "run_reason": reason,
         "policy_type": "MlpPolicy",
         "total_timesteps": TOT,
         "env_name": "deep_mimic_mujoco",
