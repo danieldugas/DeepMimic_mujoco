@@ -4,6 +4,7 @@ class Config(object):
     all_motions = ['backflip', 'cartwheel', 'crawl', 'dance_a', 'dance_b', 'getup_facedown'
                    'getup_faceup', 'jump', 'kick', 'punch', 'roll', 'run', 'spin', 'spinkick',
                    'walk']
+    acyclical_motions = ['getup_faceup', 'getup_facedown']
     # curr_path = getcwd()
     import os
     curr_path = os.path.expanduser("~/Code/DeepMimic_mujoco/src")

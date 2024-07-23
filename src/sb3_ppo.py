@@ -177,7 +177,7 @@ if __name__ == "__main__":
     if not DBG_NO_WANDB:
         wandb.login()
         run = wandb.init(
-            project="deep_mimic",
+            project="deep_mimic_" + DPEnv.motion + DPEnv.task,
             config=config,
             sync_tensorboard=True,  # auto-upload sb3's tensorboard metrics
             monitor_gym=True,  # auto-upload the videos of agents playing the game

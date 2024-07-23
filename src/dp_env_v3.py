@@ -42,8 +42,10 @@ class DPEnvConfig:
         self.ADD_JOINT_FORCE_OBS = True
 
 class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.3"
+    version = "v0.4.acyclic"
     CFG = DPEnvConfig()
+    motion = Config.motion
+    task = ""
     def __init__(self):
         xml_file_path = Config.xml_path
 
@@ -197,9 +199,6 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         # reward_config = math.exp(-self.scale_err * self.scale_pose * err_configs)
         reward_config = math.exp(-err_configs)
 
-        self.idx_curr += 1
-        self.idx_curr = self.idx_curr % self.mocap_data_len
-
         return reward_config
 
     def step(self, action):
@@ -224,9 +223,16 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         info = dict(reward_obs=reward_obs, reward_acs=reward_acs, reward_forward=reward_forward)
         '''
         reward = self.calc_config_reward()
+
         # reward = reward_alive
         info = dict()
         done = self.is_done()
+
+        # increment mocap frame
+        self.idx_curr += 1
+        if self.idx_curr == self.mocap_data_len and Config.motion in Config.acyclical_motions:
+            done = True
+        self.idx_curr = self.idx_curr % self.mocap_data_len
 
         self.episode_reward += reward
         self.episode_length += 1
