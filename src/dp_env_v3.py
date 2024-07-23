@@ -42,7 +42,7 @@ class DPEnvConfig:
         self.ADD_JOINT_FORCE_OBS = True
 
 class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.4.acyclic"
+    version = "v0.5.height_reward"
     CFG = DPEnvConfig()
     motion = Config.motion
     task = ""
@@ -174,32 +174,19 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
     def early_termination(self):
         pass
 
-    def get_joint_configs(self):
-        data = self.sim.data
-        return data.qpos[7:] # to exclude root joint
-
     def load_mocap(self, filepath):
         self.mocap.load_mocap(filepath)
         self.mocap_dt = self.mocap.dt
         self.mocap_data_len = len(self.mocap.data)
 
     def calc_config_errs(self, env_config, mocap_config):
+        raise NotImplementedError("Deprecated")
         assert len(env_config) == len(mocap_config)
         return np.sum(np.abs(env_config - mocap_config))
 
     def calc_config_reward(self):
-        assert len(self.mocap.data) != 0
-        err_configs = 0.0
+        raise NotImplementedError("Deprecated")
 
-        target_config = self.mocap.data_config[self.idx_curr][7:] # to exclude root joint
-        self.curr_frame = target_config
-        curr_config = self.get_joint_configs()
-
-        err_configs = self.calc_config_errs(curr_config, target_config)
-        # reward_config = math.exp(-self.scale_err * self.scale_pose * err_configs)
-        reward_config = math.exp(-err_configs)
-
-        return reward_config
 
     def step(self, action):
         # self.step_len = int(self.mocap_dt // self.model.opt.timestep)
@@ -210,44 +197,62 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         self.do_simulation(action, step_times)
         # pos_after = mass_center(self.model, self.sim)
 
+        # Observation
+        # -----------------------------------------
         observation = self._get_obs()
 
-        reward_alive = 1.0
-        '''
-        reward_obs = self.calc_config_reward()
-        reward_acs = np.square(data.ctrl).sum()
-        reward_forward = 0.25*(pos_after - pos_before)
+        # Reward
+        # ------------------------------------------
+        assert len(self.mocap.data) != 0
+        err_configs = 0.0
+        target_config = self.mocap.data_config[self.idx_curr][7:] # to exclude root joint
+        self.curr_frame = target_config
+        curr_config = self.sim.data.qpos[7:] # to exclude root joint
+        assert len(curr_config) == len(target_config)
+        err_configs = np.sum(np.abs(curr_config - target_config))
+        reward_config = math.exp(-err_configs)
+        wp = 0.65
+        # Height Reward
+        mocap_root_z = self.mocap.data_config[self.idx_curr][2]
+        sim_root_z = self.sim.data.qpos[2]
+        height_diff = np.abs(mocap_root_z - sim_root_z)
+        reward_height = math.exp(-5 * height_diff)
+        wc = 0.35
+        # Sum reward
+        reward = wp * reward_config + wc * reward_height
 
-        reward = reward_obs - 0.1 * reward_acs + reward_forward + reward_alive
-
-        info = dict(reward_obs=reward_obs, reward_acs=reward_acs, reward_forward=reward_forward)
-        '''
-        reward = self.calc_config_reward()
-
-        # reward = reward_alive
         info = dict()
-        done = self.is_done()
 
-        # increment mocap frame
-        self.idx_curr += 1
-        if self.idx_curr == self.mocap_data_len and Config.motion in Config.acyclical_motions:
+        # Termination
+        # -------------------------------
+        done = False
+        # Low / high C.O.M termination
+        floor_motions = ["getup_faceup", "getup_facedown"]
+        if Config.motion not in floor_motions:
+            mass = np.expand_dims(self.model.body_mass, 1)
+            xpos = self.sim.data.xipos
+            z_com = (np.sum(mass * xpos, 0) / np.sum(mass))[2]
+            done = bool((z_com < 0.7) or (z_com > 2.0))
+        # Max episode length
+        if self.CFG.MAX_EP_LENGTH != 0:
+            if self.episode_length >= self.CFG.MAX_EP_LENGTH:
+                done = True
+        # Acyclic mocap end
+        if (self.idx_curr + 1) == self.mocap_data_len and Config.motion in Config.acyclical_motions:
             done = True
-        self.idx_curr = self.idx_curr % self.mocap_data_len
 
+        # Post-step
+        # ------------------------------------------
+        # increment mocap frame
+        self.idx_curr = (self.idx_curr + 1) % self.mocap_data_len
+        # increment episode counters
         self.episode_reward += reward
         self.episode_length += 1
 
         return observation, reward, done, info
 
     def is_done(self):
-        mass = np.expand_dims(self.model.body_mass, 1)
-        xpos = self.sim.data.xipos
-        z_com = (np.sum(mass * xpos, 0) / np.sum(mass))[2]
-        done = bool((z_com < 0.7) or (z_com > 2.0))
-        if self.CFG.MAX_EP_LENGTH != 0:
-            if self.episode_length >= self.CFG.MAX_EP_LENGTH:
-                done = True
-        return done
+        raise NotImplementedError("Deprecated")
 
     def goto(self, pos):
         self.sim.data.qpos[:] = pos[:]
@@ -323,7 +328,8 @@ if __name__ == "__main__":
         # qvel = np.zeros_like(env.mocap.data_vel[env.idx_curr])
         env.set_state(qpos, qvel)
         env.sim.step()
-        env.calc_config_reward()
+        env.idx_curr = (env.idx_curr + 1) % env.mocap_data_len
+        # env.calc_config_reward()
         print(env._get_obs())
         env.render(mode="human")
 
