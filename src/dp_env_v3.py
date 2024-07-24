@@ -42,7 +42,7 @@ class DPEnvConfig:
         self.ADD_JOINT_FORCE_OBS = True
 
 class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.6.strong2_no_ZR_add_QVR_include_QPitchError"
+    version = "v0.6.facedown_UR"
     CFG = DPEnvConfig()
     motion = Config.motion
     task = ""
@@ -233,19 +233,21 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         sim_root_z = self.sim.data.qpos[2]
         height_diff = np.abs(mocap_root_z - sim_root_z)
         reward_height = math.exp(-5 * height_diff)
+        # Higher - more reward
+        target_z_com = 0.7
+        linear_height_error = np.clip((target_z_com - z_com) / target_z_com, 0., 1.) # 0-1 linear
+        reward_up = 1 - linear_height_error
         # Sum reward
-        wp = 0.9
+        wp = 0.8
         wv = 0.1
         wc = 0.0
-        reward = wp * reward_config + wv * reward_qvel + wc * reward_height
+        wu = 0.1
+        reward = wp * reward_config + wv * reward_qvel + wc * reward_height + wu * reward_up
         # Pure getup reward: config reward if z > 0.7 else z reward
         if Config.motion == "pure_getup":
-            target_z_com = 0.7
-            linear_height_error = np.clip((target_z_com - z_com) / target_z_com, 0., 1.) # 0-1 linear
-            reward_height = 1 - linear_height_error
             pg_wp = wp if z_com > target_z_com else 0.0 # only get config reward if standing up
             pg_wz = 0.1
-            reward = pg_wp * reward_config + pg_wz * reward_height
+            reward = pg_wp * reward_config + pg_wz * reward_up
 
         info = dict()
 
