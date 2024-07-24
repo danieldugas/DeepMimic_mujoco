@@ -97,13 +97,6 @@ def eval_dashboard_rollout(model, eval_env, n, run_name):
     with open(log_path, 'a') as f:
         f.write(f"{n},{ep_len},{ep_rew}\n")
     print("Logged to", log_path)
-    # log to wandb
-    if not DBG_NO_WANDB:
-        wandb.log({
-            "eval_episode_length": ep_len,
-            "eval_episode_reward": ep_rew,
-            "eval_global_step": n,
-        })
     # load logfile, plot, and save plot
     # use numpy to load the csv
     plot_path = video_dir + '/rew_plot.png'
@@ -121,9 +114,20 @@ def eval_dashboard_rollout(model, eval_env, n, run_name):
     ax.set_xlabel("Global Step")
     fig.savefig(len_plot_path)
     plt.close()
+    # log to wandb
+    if not DBG_NO_WANDB:
+        wandb.log({
+            "eval_episode_length": ep_len,
+            "eval_episode_reward": ep_rew,
+            "eval_global_step": n,
+            "eval_best_episode_reward": np.max(log[:, 2]),
+            "eval_best_episode_global_step": int(log[np.argmax(log[:, 2]), 0]),
+        })
     # save model if best
     if np.max(log[:, 2]) == log[-1, 2]:
         model.save(video_dir + "/" + run.name + "_best")
+    # print ep len and reward
+    print("Eval: LEN {}, EP_REW {}".format(ep_len, ep_rew))
 
 
 class EvalDashboardCallback(BaseCallback):
@@ -137,7 +141,7 @@ class EvalDashboardCallback(BaseCallback):
         model = self.model
         eval_env = self.eval_env
         n_agents = self.num_timesteps // self.n_calls
-        if self.n_calls % (100000 // n_agents) == 0 or self.n_calls == 1:
+        if self.n_calls % (500000 // n_agents) == 0 or self.n_calls == 1:
             eval_dashboard_rollout(model, eval_env, n, self.run_name)
         return True
 
@@ -177,6 +181,8 @@ if __name__ == "__main__":
         "policy_type": "MlpPolicy",
         "total_timesteps": TOT,
         "env_name": "deep_mimic_mujoco",
+        "motion": DPEnv.motion,
+        "task": DPEnv.task,
         "version": DPEnv.version,
         "env_cfg": DPEnv.CFG.__dict__.copy(),
         "arch": policy_kwargs["net_arch"],
@@ -191,7 +197,7 @@ if __name__ == "__main__":
     if not DBG_NO_WANDB:
         wandb.login()
         run = wandb.init(
-            project="deep_mimic_" + DPEnv.motion + DPEnv.task,
+            project="deep_mimic",
             config=config,
             sync_tensorboard=True,  # auto-upload sb3's tensorboard metrics
             monitor_gym=True,  # auto-upload the videos of agents playing the game
