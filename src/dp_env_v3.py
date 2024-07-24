@@ -203,6 +203,9 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 
         # Reward
         # ------------------------------------------
+        mass = np.expand_dims(self.model.body_mass, 1)
+        xpos = self.sim.data.xipos
+        z_com = (np.sum(mass * xpos, 0) / np.sum(mass))[2]
         # Joint Reward
         assert len(self.mocap.data) != 0
         err_configs = 0.0
@@ -235,6 +238,14 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         wv = 0.1
         wc = 0.0
         reward = wp * reward_config + wv * reward_qvel + wc * reward_height
+        # Pure getup reward: config reward if z > 0.7 else z reward
+        if Config.motion == "pure_getup":
+            target_z_com = 0.7
+            linear_height_error = np.clip((target_z_com - z_com) / target_z_com, 0., 1.) # 0-1 linear
+            reward_height = 1 - linear_height_error
+            pg_wp = wp if z_com > target_z_com else 0.0 # only get config reward if standing up
+            pg_wz = 0.1
+            reward = pg_wp * reward_config + pg_wz * reward_height
 
         info = dict()
 
@@ -242,11 +253,7 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         # -------------------------------
         done = False
         # Low / high C.O.M termination
-        floor_motions = ["getup_faceup", "getup_facedown"]
-        if Config.motion not in floor_motions:
-            mass = np.expand_dims(self.model.body_mass, 1)
-            xpos = self.sim.data.xipos
-            z_com = (np.sum(mass * xpos, 0) / np.sum(mass))[2]
+        if Config.motion not in Config.floor_motions:
             done = bool((z_com < 0.7) or (z_com > 2.0))
         # Max episode length
         if self.CFG.MAX_EP_LENGTH != 0:
@@ -285,6 +292,13 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         self.reference_state_init(idx_init=idx_init)
         qpos = self.mocap.data_config[self.idx_init]
         qvel = self.mocap.data_vel[self.idx_init]
+        # pure getup: sample qpos between face up and face down
+        if Config.motion == "pure_getup":
+            facedown_qpos = np.array([ 0.        ,  0.        ,  0.09693154,  0.81462215, -0.03628729, 0.57828231,  0.02575954, -0.09715949, -0.13402289,  0.23404109, -0.32382436, -0.7137865 , -0.63297655, -0.63650132, -0.80705222, -0.36956231,  1.89956879, -0.43388199, -1.13447904, -0.98741531, 1.83271772, -0.18715395,  0.27874609, -0.28062799, -0.14722376, 0.58190366,  0.65872423, -0.42221205,  0.10698555,  0.32929198, 0.22943894, -0.06426477, -0.25887806,  0.65881423,  0.24884088])
+            faceup_qpos = np.array([ 0.        ,  0.        ,  0.14463782,  0.65638734, -0.06792704, -0.74736854, -0.07734233,  0.01607324,  0.08015059,  0.23454479, -0.07092313,  0.11515758, -0.24631789, -0.45420186,  0.25846714, 0.12100114,  0.39112938,  0.46605128,  0.08299144, -0.25985296, 0.97973802, -0.09451541,  0.06060995, -0.02247272, -0.28901954, 0.75771542,  0.51928372, -0.61474429,  0.01629538,  0.13941373, 0.14776958, -0.15809716, -0.30783188,  0.72686225,  0.16891735])
+            getup_qvel = np.array([0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
+            qpos = facedown_qpos if random.random() < 0.5 else faceup_qpos
+            qvel = getup_qvel
         self.set_state(qpos, qvel)
         observation = self._get_obs()
         self.idx_tmp_count = -self.step_len
