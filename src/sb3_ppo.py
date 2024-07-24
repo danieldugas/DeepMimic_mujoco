@@ -83,7 +83,7 @@ def eval_dashboard_rollout(model, eval_env, n, run_name):
     video_dir = os.path.expanduser("~/deep_mimic/" + run_name + "_videos")
     video_path =  video_dir + '/global_step_{}.mp4'.format(n)
     os.makedirs(video_dir, exist_ok=True)
-    out = cv2.VideoWriter(video_path, cv2.VideoWriter_fourcc(*'mp4v'), 1, size)
+    out = cv2.VideoWriter(video_path, cv2.VideoWriter_fourcc(*'mp4v'), 24 if len(img_array) > 10 else 1, size)
     for i in range(len(img_array)):
         out.write(img_array[i])
     out.release()
