@@ -42,7 +42,7 @@ class DPEnvConfig:
         self.ADD_JOINT_FORCE_OBS = True
 
 class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.6.strong2_no_ZR_add_QVR_include_QPitchError"
+    version = "v0.6.strong4_add_ZR"
     CFG = DPEnvConfig()
     motion = Config.motion
     task = ""
@@ -234,9 +234,9 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         height_diff = np.abs(mocap_root_z - sim_root_z)
         reward_height = math.exp(-5 * height_diff)
         # Sum reward
-        wp = 0.9
+        wp = 0.8
         wv = 0.1
-        wc = 0.0
+        wc = 0.1 # NOCOMMIT
         reward = wp * reward_config + wv * reward_qvel + wc * reward_height
         # Pure getup reward: config reward if z > 0.7 else z reward
         if Config.motion == "pure_getup":
