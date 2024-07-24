@@ -42,7 +42,7 @@ class DPEnvConfig:
         self.ADD_JOINT_FORCE_OBS = True
 
 class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.6.strong2_no_ZR_add_QVR"
+    version = "v0.6.strong2_no_ZR_add_QVR_include_QPitchError"
     CFG = DPEnvConfig()
     motion = Config.motion
     task = ""
@@ -211,6 +211,13 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         curr_config = self.sim.data.qpos[7:] # to exclude root joint
         assert len(curr_config) == len(target_config)
         err_configs = np.sum(np.abs(curr_config - target_config))
+        # pitch error (pitch is -1.57 to 1.57)
+        w,x,y,z = self.sim.data.qpos[3:7]
+        _, curr_root_pitch, _ = py3dtf.Quaternion(x,y,z,w).to_rpy()
+        w,x,y,z = self.mocap.data_config[self.idx_curr][3:7]
+        _, target_root_pitch, _ = py3dtf.Quaternion(x,y,z,w).to_rpy()
+        err_pitch = np.abs(curr_root_pitch - target_root_pitch)
+        err_configs += err_pitch # adds pitch error to total error
         reward_config = math.exp(-err_configs)
         # QVel Reward
         target_qvel = self.mocap.data_vel[self.idx_curr][6:] # to exclude root joint
@@ -338,7 +345,9 @@ if __name__ == "__main__":
         env.sim.step()
         env.idx_curr = (env.idx_curr + 1) % env.mocap_data_len
         # env.calc_config_reward()
-        print(env._get_obs())
         env.render(mode="human")
+        # print(env._get_obs())
+        # root roll pitch yaw
+        w,x,y,z = qpos[3:7]; print(py3dtf.Quaternion(x,y,z,w).to_rpy())
 
     # vid_save.close()
