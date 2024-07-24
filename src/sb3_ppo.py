@@ -204,7 +204,7 @@ if __name__ == "__main__":
                     n_steps=HRZ, learning_rate=LR, n_epochs=EPOCHS, batch_size=minibatch_size)
     print("Begin Learn")
     print("-----------")
-    model.learn(total_timesteps=100*M, tb_log_name=run.name, callback=EvalDashboardCallback(eval_env, run.name))
+    model.learn(total_timesteps=100*M, tb_log_name=run.name, callback=EvalDashboardCallback(eval_env, DPEnv.motion + DPEnv.task + "_" + run.name))
     model.save(os.path.expanduser("~/deep_mimic/" + run.name))
 
     del model # remove to demonstrate saving and loading
