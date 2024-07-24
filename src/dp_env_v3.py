@@ -42,7 +42,7 @@ class DPEnvConfig:
         self.ADD_JOINT_FORCE_OBS = True
 
 class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.5.height_reward"
+    version = "v0.6.strong2_no_ZR"
     CFG = DPEnvConfig()
     motion = Config.motion
     task = ""
@@ -203,6 +203,7 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 
         # Reward
         # ------------------------------------------
+        # Joint Reward
         assert len(self.mocap.data) != 0
         err_configs = 0.0
         target_config = self.mocap.data_config[self.idx_curr][7:] # to exclude root joint
@@ -211,15 +212,22 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         assert len(curr_config) == len(target_config)
         err_configs = np.sum(np.abs(curr_config - target_config))
         reward_config = math.exp(-err_configs)
-        wp = 0.65
+        # QVel Reward
+        target_qvel = self.mocap.data_vel[self.idx_curr][6:] # to exclude root joint
+        current_qvel = self.sim.data.qvel[6:] # to exclude root joint
+        assert len(target_qvel) == len(current_qvel)
+        err_qvel = np.sum(np.abs(target_qvel - current_qvel))
+        reward_qvel = math.exp(-0.1 * err_qvel)
         # Height Reward
         mocap_root_z = self.mocap.data_config[self.idx_curr][2]
         sim_root_z = self.sim.data.qpos[2]
         height_diff = np.abs(mocap_root_z - sim_root_z)
         reward_height = math.exp(-5 * height_diff)
-        wc = 0.35
         # Sum reward
-        reward = wp * reward_config + wc * reward_height
+        wp = 1.0
+        wv = 0.0
+        wc = 0.0
+        reward = wp * reward_config + wv * reward_qvel + wc * reward_height
 
         info = dict()
 
