@@ -42,16 +42,11 @@ class DPEnvConfig:
         self.ADD_JOINT_FORCE_OBS = True
 
 class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.6.strong2_no_ZR_add_QVR_include_QPitchError"
+    version = "v0.7.motion_arg"
     CFG = DPEnvConfig()
-    motion = Config.motion
-    task = ""
-    def __init__(self):
-        xml_file_path = Config.xml_path
-
-        self.mocap = MocapDM()
-        self.interface = MujocoInterface()
-        self.load_mocap(Config.mocap_path)
+    def __init__(self, motion=None, load_mocap=True):
+        self.config = Config(motion=motion)
+        xml_file_path = self.config.xml_path
 
         self.weight_pose = 0.5
         self.weight_vel = 0.05
@@ -66,7 +61,20 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         self.scale_com = 10.0
         self.scale_err = 1.0
 
-        self.reference_state_init()
+        self.mocap = MocapDM()
+        self.interface = MujocoInterface()
+        if load_mocap:
+            self.load_mocap(self.config.mocap_path)
+            self.reference_state_init()
+            assert len(self.mocap.data) != 0
+        else:
+            # mujoco init calls step, which needs these items
+            N = 3
+            self.mocap.data_config = np.zeros((N, 35))
+            self.mocap.data_vel = np.zeros((N, 34))
+            self.mocap_data_len = N
+            self.mocap.data_body_xpos = np.zeros((N, 14))
+            self.mocap.data_geom_xpos = np.zeros((N, 16))
         self.idx_curr = -1
         self.idx_tmp_count = -1
 
@@ -76,13 +84,10 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         mujoco_env.MujocoEnv.__init__(self, xml_file_path, 6)
         utils.EzPickle.__init__(self)
 
-        # self.nameindex = {}
-        # current_start = 0
-        # for i, c in enumerate(self.model.names):
-        #     if c == 0 or c == b'':
-        #         word = bytes(self.model.names[current_start:i]).decode('utf-8')
-        #         self.nameindex[current_start] = word
-        #         current_start = i + 1
+        assert len(self.mocap.data_config[0]) == len(self.sim.data.qpos)
+        assert len(self.mocap.data_vel[0]) == len(self.sim.data.qvel)
+        assert len(self.mocap.data_body_xpos[0]) == len(self.sim.data.body_xpos)
+        assert len(self.mocap.data_geom_xpos[0]) == len(self.sim.data.geom_xpos)
 
     def _get_obs(self):
         position = self.sim.data.qpos.flat.copy()[7:] # ignore root joint
@@ -204,7 +209,6 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         # Reward
         # ------------------------------------------
         # Joint Reward
-        assert len(self.mocap.data) != 0
         err_configs = 0.0
         target_config = self.mocap.data_config[self.idx_curr][7:] # to exclude root joint
         self.curr_frame = target_config
@@ -242,8 +246,7 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         # -------------------------------
         done = False
         # Low / high C.O.M termination
-        floor_motions = ["getup_faceup", "getup_facedown"]
-        if Config.motion not in floor_motions:
+        if self.config.motion not in self.config.floor_motions:
             mass = np.expand_dims(self.model.body_mass, 1)
             xpos = self.sim.data.xipos
             z_com = (np.sum(mass * xpos, 0) / np.sum(mass))[2]
@@ -253,7 +256,7 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             if self.episode_length >= self.CFG.MAX_EP_LENGTH:
                 done = True
         # Acyclic mocap end
-        if (self.idx_curr + 1) == self.mocap_data_len and Config.motion in Config.acyclical_motions:
+        if (self.idx_curr + 1) == self.mocap_data_len and self.config.motion in self.config.acyclical_motions:
             done = True
 
         # Post-step
@@ -317,6 +320,27 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             cv2.putText(textmask, string, (40, 40), font, 1., (255, 255, 255), 2, cv2.LINE_AA)
             output = textmask
         return output
+
+def test_walk_hand_xpos_mocap(human=False):
+    env = DPEnv(motion="walk")
+    env.reset_model()
+    hand_idx = env.sim.model.geom_name2id("left_wrist")
+    mocap_hand_xpos = []
+    env_hand_xpos = []
+    for i in range(env.mocap_data_len):
+        qpos = env.mocap.data_config[i]
+        qvel = env.mocap.data_vel[i]
+        env.set_state(qpos, qvel)
+        if human:
+            env.render(mode="human")
+        mocap_hand_xpos.append(env.mocap.data_geom_xpos[i][hand_idx][2])
+        env_hand_xpos.append(env.sim.data.geom_xpos[hand_idx][2])
+    assert np.allclose(mocap_hand_xpos, env_hand_xpos)
+    if human:
+        from matplotlib import pyplot as plt
+        plt.plot(env_hand_xpos)
+        plt.plot(mocap_hand_xpos)
+        plt.show()
 
 if __name__ == "__main__":
     env = DPEnv()

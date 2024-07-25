@@ -1,21 +1,20 @@
-from os import getcwd
+import os
 
 class Config(object):
-    all_motions = ['backflip', 'cartwheel', 'crawl', 'dance_a', 'dance_b', 'getup_facedown'
-                   'getup_faceup', 'jump', 'kick', 'punch', 'roll', 'run', 'spin', 'spinkick',
-                   'walk']
-    acyclical_motions = ['getup_faceup', 'getup_facedown']
-    # curr_path = getcwd()
-    import os
-    curr_path = os.path.expanduser("~/Code/DeepMimic_mujoco/src")
-    motion = 'walk'
-    # motion = 'dance_b'
-    env_name = "dp_env_v3"
+    def __init__(self, motion=None):
+        self.all_motions = ['backflip', 'cartwheel', 'crawl', 'dance_a', 'dance_b', 'getup_facedown'
+                    'getup_faceup', 'jump', 'kick', 'punch', 'roll', 'run', 'spin', 'spinkick',
+                    'walk']
+        self.acyclical_motions = ['getup_faceup', 'getup_facedown']
+        self.floor_motions = ["getup_faceup", "getup_facedown"]
+        self.curr_path = os.path.expanduser("~/Code/DeepMimic_mujoco/src")
+        self.motion = 'walk' if motion is None else motion
+        self.env_name = "dp_env_v3"
 
-    motion_folder = '/mujoco/motions'
-    xml_folder = '/mujoco/humanoid_deepmimic/envs/asset'
-    xml_test_folder = '/mujoco_test/'
+        self.motion_folder = '/mujoco/motions'
+        self.xml_folder = '/mujoco/humanoid_deepmimic/envs/asset'
+        self.xml_test_folder = '/mujoco_test/'
 
-    mocap_path = "%s%s/humanoid3d_%s.txt"%(curr_path, motion_folder, motion)
-    xml_path = "%s%s/%s.xml"%(curr_path, xml_folder, env_name)
-    xml_path_test = "%s%s/%s_test.xml"%(curr_path, xml_test_folder, env_name)
+        self.mocap_path = "%s%s/humanoid3d_%s.txt"%(self.curr_path, self.motion_folder, self.motion)
+        self.xml_path = "%s%s/%s.xml"%(self.curr_path, self.xml_folder, self.env_name)
+        self.xml_path_test = "%s%s/%s_test.xml"%(self.curr_path, self.xml_test_folder, self.env_name)

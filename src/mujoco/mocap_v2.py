@@ -147,6 +147,23 @@ class MocapDM(object):
                     #     print(diff)
             self.data_vel.append(np.array(tmp_vel))
             self.data_config.append(np.array(tmp_angle))
+        
+        if True:
+            self.data_body_xpos = []
+            self.data_geom_xpos = []
+            # C.o.M:
+            # model.body_mass
+            # data.body_xpos
+            # End effectors
+            # data.geom_xpos
+            # model.geom_name2id
+            from dp_env_v3 import DPEnv
+            env = DPEnv(load_mocap=False)
+            env.reset_model()
+            for qpos, qvel in zip(self.data_config, self.data_vel):
+                env.set_state(qpos, qvel)
+                self.data_body_xpos.append(np.array(env.sim.data.body_xpos)*1.)
+                self.data_geom_xpos.append(np.array(env.sim.data.geom_xpos)*1.)
 
     def play(self, mocap_filepath):
         from mujoco_py import load_model_from_xml, MjSim, MjViewer

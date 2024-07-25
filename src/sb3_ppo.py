@@ -153,12 +153,14 @@ def parse_reason():
     if len(sys.argv) > 2:
         raise ValueError("Too many arguments")
     print("Reason: " + reason)
-    if reason == "":
+    if reason == "" and not DBG_NO_WANDB:
         raise ValueError("Please provide a reason for this run")
     return reason
 
 if __name__ == "__main__":
     reason = parse_reason()
+    motion = "walk"
+    task = ""
     M = 1000000
     # train a policy
     # hyperparams
@@ -181,8 +183,8 @@ if __name__ == "__main__":
         "policy_type": "MlpPolicy",
         "total_timesteps": TOT,
         "env_name": "deep_mimic_mujoco",
-        "motion": DPEnv.motion,
-        "task": DPEnv.task,
+        "motion": motion,
+        "task": task,
         "version": DPEnv.version,
         "env_cfg": DPEnv.CFG.__dict__.copy(),
         "arch": policy_kwargs["net_arch"],
@@ -203,14 +205,14 @@ if __name__ == "__main__":
             monitor_gym=True,  # auto-upload the videos of agents playing the game
             save_code=True,  # optional
         )
-    eval_env = DPEnv()
-    envs = SubprocVecEnv([lambda: DPEnv() for i in range(N_AG)])
+    eval_env = DPEnv(motion=motion)
+    envs = SubprocVecEnv([lambda: DPEnv(motion=motion) for i in range(N_AG)])
     model = PPO(MlpPolicy, envs, policy_kwargs=policy_kwargs, verbose=1,
                     tensorboard_log=os.path.expanduser("~/tensorboard/"),
                     n_steps=HRZ, learning_rate=LR, n_epochs=EPOCHS, batch_size=minibatch_size)
     print("Begin Learn")
     print("-----------")
-    model.learn(total_timesteps=100*M, tb_log_name=run.name, callback=EvalDashboardCallback(eval_env, DPEnv.motion + DPEnv.task + "_" + run.name))
+    model.learn(total_timesteps=100*M, tb_log_name=run.name, callback=EvalDashboardCallback(eval_env, motion + task + "_" + run.name))
     model.save(os.path.expanduser("~/deep_mimic/" + run.name))
 
     del model # remove to demonstrate saving and loading
