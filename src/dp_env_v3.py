@@ -42,7 +42,7 @@ class DPEnvConfig:
         self.ADD_JOINT_FORCE_OBS = True
 
 class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.7.motion_arg"
+    version = "v0.7.EERW_COMRW"
     CFG = DPEnvConfig()
     def __init__(self, motion=None, load_mocap=True):
         self.config = Config(motion=motion)
@@ -73,8 +73,8 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             self.mocap.data_config = np.zeros((N, 35))
             self.mocap.data_vel = np.zeros((N, 34))
             self.mocap_data_len = N
-            self.mocap.data_body_xpos = np.zeros((N, 14))
-            self.mocap.data_geom_xpos = np.zeros((N, 16))
+            self.mocap.data_body_xpos = np.zeros((N, 14, 3))
+            self.mocap.data_geom_xpos = np.zeros((N, 16, 3))
         self.idx_curr = -1
         self.idx_tmp_count = -1
 
@@ -207,6 +207,7 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         observation = self._get_obs()
 
         # Reward
+        mass = np.expand_dims(self.model.body_mass, 1)
         # ------------------------------------------
         # Joint Reward
         err_configs = 0.0
@@ -229,16 +230,26 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         assert len(target_qvel) == len(current_qvel)
         err_qvel = np.sum(np.abs(target_qvel - current_qvel))
         reward_qvel = math.exp(-0.1 * err_qvel)
-        # Height Reward
-        mocap_root_z = self.mocap.data_config[self.idx_curr][2]
-        sim_root_z = self.sim.data.qpos[2]
-        height_diff = np.abs(mocap_root_z - sim_root_z)
-        reward_height = math.exp(-5 * height_diff)
+        # End effector reward
+        end_effectors = ["left_wrist", "right_wrist", "left_ankle", "right_ankle"]
+        err_end_eff = 0.0
+        for end_effector in end_effectors:
+            idx = self.sim.model.geom_name2id(end_effector)
+            err_end_eff += np.linalg.norm(self.sim.data.geom_xpos[idx] - self.mocap.data_geom_xpos[self.idx_curr][idx])
+        reward_end_eff = math.exp(-40 * err_end_eff)
+        # C.O.M reward
+        target_body_xpos = self.mocap.data_body_xpos[self.idx_curr]
+        current_body_xpos = self.sim.data.body_xpos
+        target_com = np.sum(target_body_xpos * mass, 0) / np.sum(mass)
+        current_com = np.sum(current_body_xpos * mass, 0) / np.sum(mass)
+        com_err = np.linalg.norm(target_com - current_com)
+        reward_com = math.exp(-10 * com_err)
         # Sum reward
-        wp = 0.9
+        wp = 0.65
         wv = 0.1
-        wc = 0.0
-        reward = wp * reward_config + wv * reward_qvel + wc * reward_height
+        we = 0.15
+        wc = 0.1
+        reward = wp * reward_config + wv * reward_qvel + we * reward_end_eff + wc * reward_com
 
         info = dict()
 
@@ -247,7 +258,6 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         done = False
         # Low / high C.O.M termination
         if self.config.motion not in self.config.floor_motions:
-            mass = np.expand_dims(self.model.body_mass, 1)
             xpos = self.sim.data.xipos
             z_com = (np.sum(mass * xpos, 0) / np.sum(mass))[2]
             done = bool((z_com < 0.7) or (z_com > 2.0))
