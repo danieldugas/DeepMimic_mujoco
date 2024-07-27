@@ -40,9 +40,10 @@ class DPEnvConfig:
         self.ADD_FOOT_CONTACT_OBS = True
         self.ADD_TORSO_OBS = True
         self.ADD_JOINT_FORCE_OBS = True
+        self.ADD_PHASE_OBS = True
 
 class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.7.EERW_COMRW"
+    version = "v0.8.phase_obs"
     CFG = DPEnvConfig()
     def __init__(self, motion=None, load_mocap=True):
         self.config = Config(motion=motion)
@@ -97,7 +98,8 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         torso = self.get_torso_obs()
         foot_contact = self.get_foot_contact_obs()
         joint_force = self.get_joint_force_obs()
-        return np.concatenate((position, velocity, torso, foot_contact, joint_force))
+        phase_obs  =self.get_phase_obs()
+        return np.concatenate((position, velocity, torso, foot_contact, joint_force, phase_obs))
 
     def get_torso_obs(self):
         if not self.CFG.ADD_TORSO_OBS:
@@ -168,6 +170,11 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         S = self.CFG.FRC_OBS_SCALE
         jf = np.array(jf) * S
         return jf
+
+    def get_phase_obs(self):
+        if not self.CFG.ADD_PHASE_OBS:
+            return []
+        return [1.0 * self.idx_curr / self.mocap_data_len]
 
     def reference_state_init(self, idx_init=None):
         self.idx_init = random.randint(0, self.mocap_data_len-1)
