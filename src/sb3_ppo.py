@@ -17,9 +17,8 @@ from stable_baselines3.ppo import MlpPolicy
 
 from stable_baselines3.common.callbacks import BaseCallback
 
-DBG_NO_WANDB = False
 
-def eval_dashboard_rollout(model, eval_env, n, run_name):
+def eval_dashboard_rollout(model, eval_env, n, run_name, log_wandb=True):
     """ Collect an episode and plot it """
     from matplotlib import pyplot as plt
     import numpy as np
@@ -30,11 +29,14 @@ def eval_dashboard_rollout(model, eval_env, n, run_name):
     fig_paths = []
     fig_dir_name = os.path.expanduser("/tmp/sb3_eval_" + str(n) + "_" + run_name)
     while True:
-        with th.no_grad():
-            action, _states = model.predict(obs, deterministic=True)
-            obs_tensor = th.as_tensor(obs.reshape((1, -1)), dtype=th.float32, device=model.device)
-            actions, values, log_probs = model.policy(obs_tensor, deterministic=True)
-            val = values.detach().cpu().numpy().flatten()[0]
+        try:
+            with th.no_grad():
+                action, _states = model.predict(obs, deterministic=True)
+                obs_tensor = th.as_tensor(obs.reshape((1, -1)), dtype=th.float32, device=model.device)
+                actions, values, log_probs = model.policy(obs_tensor, deterministic=True)
+                val = values.detach().cpu().numpy().flatten()[0]
+        except:
+            val = 0
         frame = eval_env.render(mode='rgb_array')
         obs, rewards, dones, info = eval_env.step(action)
         ep_rew += rewards
@@ -115,7 +117,7 @@ def eval_dashboard_rollout(model, eval_env, n, run_name):
     fig.savefig(len_plot_path)
     plt.close()
     # log to wandb
-    if not DBG_NO_WANDB:
+    if log_wandb:
         wandb.log({
             "eval_episode_length": ep_len,
             "eval_episode_reward": ep_rew,
@@ -125,16 +127,17 @@ def eval_dashboard_rollout(model, eval_env, n, run_name):
         })
     # save model if best
     if np.max(log[:, 2]) == log[-1, 2]:
-        model.save(video_dir + "/" + run.name + "_best")
+        model.save(video_dir + "/" + run_name + "_best")
     # print ep len and reward
     print("Eval: LEN {}, EP_REW {}".format(ep_len, ep_rew))
 
 
 class EvalDashboardCallback(BaseCallback):
-    def __init__(self, eval_env, run_name, verbose: int = 0):
+    def __init__(self, eval_env, run_name, log_wandb=True, verbose: int = 0):
         super().__init__(verbose)
         self.eval_env = eval_env
         self.run_name = run_name
+        self.log_wandb = log_wandb
 
     def _on_step(self) -> bool:
         n = self.num_timesteps
@@ -142,10 +145,10 @@ class EvalDashboardCallback(BaseCallback):
         eval_env = self.eval_env
         n_agents = self.num_timesteps // self.n_calls
         if self.n_calls % (500000 // n_agents) == 0 or self.n_calls == 1:
-            eval_dashboard_rollout(model, eval_env, n, self.run_name)
+            eval_dashboard_rollout(model, eval_env, n, self.run_name, log_wandb=self.log_wandb)
         return True
 
-def parse_reason():
+def parse_reason(required=True):
     import sys
     reason = ""
     if len(sys.argv) > 1:
@@ -153,20 +156,21 @@ def parse_reason():
     if len(sys.argv) > 2:
         raise ValueError("Too many arguments")
     print("Reason: " + reason)
-    if reason == "" and not DBG_NO_WANDB:
+    if reason == "" and required:
         raise ValueError("Please provide a reason for this run")
     return reason
 
 if __name__ == "__main__":
-    reason = parse_reason()
-    motion = "walk"
+    DBG_NO_WANDB = False
+    reason = parse_reason(required=not DBG_NO_WANDB)
+    motion = "getup_facedown"
     task = ""
     M = 1000000
     # train a policy
     # hyperparams
     TOT = 100*M
-    N_AG = 32
-    HRZ = 4096
+    N_AG = 16
+    HRZ = 256
     MINIB = 512
     EPOCHS = 20
     LR = 0.0004
@@ -177,7 +181,7 @@ if __name__ == "__main__":
         name = "test" + time.strftime("%Y%m%d-%H%M_%S")
     run = Run()
     batch_size = HRZ * N_AG
-    minibatch_size = batch_size // MINIB
+    minibatch_size = 256
     config = {
         "run_reason": reason,
         "policy_type": "MlpPolicy",
@@ -212,7 +216,8 @@ if __name__ == "__main__":
                     n_steps=HRZ, learning_rate=LR, n_epochs=EPOCHS, batch_size=minibatch_size)
     print("Begin Learn")
     print("-----------")
-    model.learn(total_timesteps=100*M, tb_log_name=run.name, callback=EvalDashboardCallback(eval_env, motion + task + "_" + run.name))
+    model.learn(total_timesteps=100*M, tb_log_name=run.name, callback=EvalDashboardCallback(
+        eval_env, motion + task + "_" + run.name, log_wandb=not DBG_NO_WANDB))
     model.save(os.path.expanduser("~/deep_mimic/" + run.name))
 
     del model # remove to demonstrate saving and loading
