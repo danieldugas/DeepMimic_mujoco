@@ -39,11 +39,12 @@ class DPEnvConfig:
         self.FRC_OBS_SCALE = 0.001
         self.ADD_FOOT_CONTACT_OBS = True
         self.ADD_TORSO_OBS = True
-        self.ADD_JOINT_FORCE_OBS = True
+        self.ADD_JOINT_FORCE_OBS = False
+        self.ADD_ABSPOS_OBS = True
         self.ADD_PHASE_OBS = True
 
 class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.8.phase_obs"
+    version = "v0.9.abspos_obs_no_com_rew"
     CFG = DPEnvConfig()
     def __init__(self, motion=None, load_mocap=True):
         self.config = Config(motion=motion)
@@ -98,8 +99,9 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         torso = self.get_torso_obs()
         foot_contact = self.get_foot_contact_obs()
         joint_force = self.get_joint_force_obs()
-        phase_obs  =self.get_phase_obs()
-        return np.concatenate((position, velocity, torso, foot_contact, joint_force, phase_obs))
+        abs_pos = self.get_abspos_obs()
+        phase_obs  = self.get_phase_obs()
+        return np.concatenate((position, velocity, torso, foot_contact, joint_force, abs_pos, phase_obs))
 
     def get_torso_obs(self):
         if not self.CFG.ADD_TORSO_OBS:
@@ -176,6 +178,13 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             return []
         return [1.0 * self.idx_curr / self.mocap_data_len]
 
+    def get_abspos_obs(self):
+        if not self.CFG.ADD_ABSPOS_OBS:
+            return []
+        geom_xpos = np.array(self.sim.data.geom_xpos).flatten() * 1.0
+        return geom_xpos
+
+
     def reference_state_init(self, idx_init=None):
         self.idx_init = random.randint(0, self.mocap_data_len-1)
         if idx_init is not None:
@@ -242,20 +251,20 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         err_end_eff = 0.0
         for end_effector in end_effectors:
             idx = self.sim.model.geom_name2id(end_effector)
-            err_end_eff += np.linalg.norm(self.sim.data.geom_xpos[idx] - self.mocap.data_geom_xpos[self.idx_curr][idx])
+            err_end_eff += np.linalg.norm(self.sim.data.geom_xpos[idx] - self.mocap.data_geom_xpos[self.idx_curr][idx])**2
         reward_end_eff = math.exp(-40 * err_end_eff)
         # C.O.M reward
         target_body_xpos = self.mocap.data_body_xpos[self.idx_curr]
         current_body_xpos = self.sim.data.body_xpos
         target_com = np.sum(target_body_xpos * mass, 0) / np.sum(mass)
         current_com = np.sum(current_body_xpos * mass, 0) / np.sum(mass)
-        com_err = np.linalg.norm(target_com - current_com)
+        com_err = np.linalg.norm(target_com - current_com)**2
         reward_com = math.exp(-10 * com_err)
         # Sum reward
-        wp = 0.65
+        wp = 0.75
         wv = 0.1
         we = 0.15
-        wc = 0.1
+        wc = 0.0
         reward = wp * reward_config + wv * reward_qvel + we * reward_end_eff + wc * reward_com
 
         info = dict()
