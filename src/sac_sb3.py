@@ -32,7 +32,8 @@ if __name__ == "__main__":
     EPOCHS = 20
     LR = 0.0004
     LOG_FREQ = 1*M // N_AG # log every 1M global steps
-    policy_kwargs = dict(net_arch=[256, 128])
+    BUFFER_SIZE = 1*M
+    policy_kwargs = dict(net_arch=[1024, 512])
     # run info
     class Run:
         name = "test" + time.strftime("%Y%m%d-%H%M_%S")
@@ -56,6 +57,7 @@ if __name__ == "__main__":
         "minibatch_size": minibatch_size,
         "learning_rate": LR, 
         "epochs": EPOCHS,
+        "buffer_size": BUFFER_SIZE,
         "machine_name": os.environ.get("MACHINE_NAME", "unknown"),
     }
     if not DBG_NO_WANDB:
@@ -72,6 +74,7 @@ if __name__ == "__main__":
     envs = SubprocVecEnv([lambda: DPEnv(motion=motion) for i in range(N_AG)])
     model = SAC(MlpPolicy, envs, policy_kwargs=policy_kwargs, verbose=1,
                     tensorboard_log=os.path.expanduser("~/tensorboard/"),
+                    buffer_size=BUFFER_SIZE,
                     # n_steps=HRZ, learning_rate=LR, n_epochs=EPOCHS, batch_size=minibatch_size,
                 )
     print("Begin Learn")

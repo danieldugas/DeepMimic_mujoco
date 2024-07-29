@@ -44,7 +44,7 @@ class DPEnvConfig:
         self.ADD_PHASE_OBS = True
 
 class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.9.abspos_obs_no_com_rew"
+    version = "v0.9.abspos_obs_no_com_rew_jlim_rew"
     CFG = DPEnvConfig()
     def __init__(self, motion=None, load_mocap=True):
         self.config = Config(motion=motion)
@@ -209,13 +209,17 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         raise NotImplementedError("Deprecated")
 
 
-    def step(self, action):
+    def step(self, action, force_state=None):
         # self.step_len = int(self.mocap_dt // self.model.opt.timestep)
         self.step_len = 1
         # step_times = int(self.mocap_dt // self.model.opt.timestep)
         step_times = 1
         # pos_before = mass_center(self.model, self.sim)
-        self.do_simulation(action, step_times)
+        if force_state is not None:
+            qpos, qvel = force_state
+            self.set_state(qpos, qvel)
+        else:
+            self.do_simulation(action, step_times)
         # pos_after = mass_center(self.model, self.sim)
 
         # Observation
@@ -260,14 +264,24 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         current_com = np.sum(current_body_xpos * mass, 0) / np.sum(mass)
         com_err = np.linalg.norm(target_com - current_com)**2
         reward_com = math.exp(-10 * com_err)
+        # Joint limit reward
+        jnt_tol = self.model.jnt_range[1:] * 0.95
+        jnt_pos = self.sim.data.qpos[7:]
+        qlim_err = np.sum((jnt_pos <= jnt_tol[:,0]) + (jnt_pos >= jnt_tol[:, 1])) / len(jnt_pos) # 0-1
         # Sum reward
         wp = 0.75
         wv = 0.1
         we = 0.15
         wc = 0.0
-        reward = wp * reward_config + wv * reward_qvel + we * reward_end_eff + wc * reward_com
+        wj = -0.1
+        reward = wp * reward_config + wv * reward_qvel + we * reward_end_eff + wc * reward_com + wj * qlim_err
 
         info = dict()
+        info["reward_config"] = reward_config
+        info["reward_qvel"] = reward_qvel
+        info["reward_end_eff"] = reward_end_eff
+        info["reward_com"] = reward_com
+        info["reward_joint_limit"] = qlim_err
 
         # Termination
         # -------------------------------
@@ -369,35 +383,30 @@ def test_walk_hand_xpos_mocap(human=False):
         plt.show()
 
 if __name__ == "__main__":
-    env = DPEnv()
-    env.reset_model()
-
-    import cv2
-    from VideoSaver import VideoSaver
-    width = 640
-    height = 480
-
-    # vid_save = VideoSaver(width=width, height=height)
-
-    # env.load_mocap("/home/mingfei/Documents/DeepMimic/mujoco/motions/humanoid3d_crawl.txt")
+    env = DPEnv(motion="getup_facedown")
+    env.reset_model(idx_init=0)
+    # Play episode
+    # -----------
     action_size = env.action_space.shape[0]
     ac = np.zeros(action_size)
+    rews = []
     while True:
-        # target_config = env.mocap.data_config[env.idx_curr][7:] # to exclude root joint
-        # env.sim.data.qpos[7:] = target_config[:]
-        # env.sim.forward()
-
         qpos = env.mocap.data_config[env.idx_curr]
         qvel = env.mocap.data_vel[env.idx_curr]
-        # qpos = np.zeros_like(env.mocap.data_config[env.idx_curr])
-        # qvel = np.zeros_like(env.mocap.data_vel[env.idx_curr])
-        env.set_state(qpos, qvel)
-        env.sim.step()
-        env.idx_curr = (env.idx_curr + 1) % env.mocap_data_len
-        # env.calc_config_reward()
+        obs, rew, done, info = env.step(ac, force_state=(qpos, qvel))
+        # obs, rew, _, info = env.step(ac) # checks how a small deviation affects the reward
+        rews.append((rew, info))
+        if done:
+            break
         env.render(mode="human")
-        # print(env._get_obs())
-        # root roll pitch yaw
-        w,x,y,z = qpos[3:7]; print(py3dtf.Quaternion(x,y,z,w).to_rpy())
-
-    # vid_save.close()
+    # plot rewards
+    # -----------
+    env.close()
+    import matplotlib.pyplot as plt
+    tot_rew = [x[0] for x in rews]
+    rew_components = {k: [x[k] for _, x in rews] for k in rews[0][1].keys()}
+    plt.plot(tot_rew, label="total")
+    for k, v in rew_components.items():
+        plt.plot(v, label=k)
+    plt.legend()
+    plt.show()
