@@ -44,7 +44,7 @@ class DPEnvConfig:
         self.ADD_PHASE_OBS = True
 
 class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.9.abspos_obs_no_com_rew_jlim_rew"
+    version = "v0.9H.hyperflexible"
     CFG = DPEnvConfig()
     def __init__(self, motion=None, load_mocap=True):
         self.config = Config(motion=motion)
@@ -390,6 +390,7 @@ if __name__ == "__main__":
     action_size = env.action_space.shape[0]
     ac = np.zeros(action_size)
     rews = []
+    log = []
     while True:
         qpos = env.mocap.data_config[env.idx_curr]
         qvel = env.mocap.data_vel[env.idx_curr]
@@ -399,10 +400,28 @@ if __name__ == "__main__":
         if done:
             break
         env.render(mode="human")
+        log.append({"qpos": env.sim.data.qpos[7:] * 1., "jnt_min": env.model.jnt_range[1:, 0], "jnt_max": env.model.jnt_range[1:, 1], "jnt_name": env.model.joint_names[1:]})
     # plot rewards
     # -----------
     env.close()
     import matplotlib.pyplot as plt
+    qpos = np.array([x["qpos"] for x in log])
+    jnt_names = log[0]["jnt_name"]
+    jnt_min = np.array([x["jnt_min"] for x in log])
+    jnt_max = np.array([x["jnt_max"] for x in log])
+    fig, axs = plt.subplots(len(qpos[0]) // 4, 4)
+    axs = axs.flatten()
+    for i in range(len(qpos[0])):
+        axs[i].plot(qpos[:, i], label="qpos")
+        axs[i].plot(jnt_min[:, i], label="min")
+        axs[i].plot(jnt_max[:, i], label="max")
+        axs[i].set_ylabel(jnt_names[i])
+        if np.any(qpos[:, i] < jnt_min[:, i]) or np.any(qpos[:, i] > jnt_max[:, i]):
+            print("{}: QMIN {} QMAX {} QRANGE {} {}".format(jnt_names[i], np.min(qpos[:, i]), np.max(qpos[:, i]), jnt_min[0, i], jnt_max[0, i]))
+    plt.suptitle("Joint limit check")
+    plt.legend()
+    # reward
+    plt.figure()
     tot_rew = [x[0] for x in rews]
     rew_components = {k: [x[k] for _, x in rews] for k in rews[0][1].keys()}
     plt.plot(tot_rew, label="total")
