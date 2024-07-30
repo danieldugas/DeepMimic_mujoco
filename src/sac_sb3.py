@@ -9,7 +9,7 @@ if __name__ == "__main__":
     import matplotlib
     matplotlib.use('Agg')
 
-from dp_env_v3 import DPEnv
+from deepmimic_env import DPEnv
 
 from stable_baselines3 import SAC
 from stable_baselines3.sac import MlpPolicy
@@ -20,8 +20,9 @@ from sb3_ppo import EvalDashboardCallback, parse_reason
 if __name__ == "__main__":
     DBG_NO_WANDB = False
     reason = parse_reason(required=not DBG_NO_WANDB)
-    motion = "getup_facedown"
+    motion = "walk"
     task = ""
+    robot = "unitree_g1"
     M = 1000000
     # train a policy
     # hyperparams
@@ -48,6 +49,7 @@ if __name__ == "__main__":
         "algorithm": "SAC",
         "motion": motion,
         "task": task,
+        "robot": robot,
         "version": DPEnv.version,
         "env_cfg": DPEnv.CFG.__dict__.copy(),
         "arch": policy_kwargs["net_arch"],
@@ -69,9 +71,9 @@ if __name__ == "__main__":
             monitor_gym=True,  # auto-upload the videos of agents playing the game
             save_code=True,  # optional
         )
-    eval_env = DPEnv(motion=motion)
+    eval_env = DPEnv(motion=motion, robot=robot)
     # env = DPEnv(motion=motion)
-    envs = SubprocVecEnv([lambda: DPEnv(motion=motion) for i in range(N_AG)])
+    envs = SubprocVecEnv([lambda: DPEnv(motion=motion, robot=robot) for i in range(N_AG)])
     model = SAC(MlpPolicy, envs, policy_kwargs=policy_kwargs, verbose=1,
                     tensorboard_log=os.path.expanduser("~/tensorboard/"),
                     buffer_size=BUFFER_SIZE,

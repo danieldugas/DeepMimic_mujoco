@@ -11,7 +11,7 @@ from stable_baselines.common.policies import MlpPolicy
 from stable_baselines.common.vec_env import DummyVecEnv, SubprocVecEnv, VecVideoRecorder
 from stable_baselines import PPO2
 
-from dp_env_v3 import DPEnv
+from deepmimic_env import DPEnv
 
 if __name__ == "__main__":
 

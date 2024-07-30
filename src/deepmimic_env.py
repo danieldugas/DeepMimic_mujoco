@@ -44,10 +44,9 @@ class DPEnvConfig:
         self.ADD_PHASE_OBS = True
 
 class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.9H.hyperflexible"
+    version = "v0.9HR.unitree_g1_walk_and_run"
     CFG = DPEnvConfig()
     def __init__(self, motion=None, load_mocap=True, robot="humanoid3d"):
-        raise NotImplementedError("Deprecated")
         self.config = Config(motion=motion, robot=robot)
         xml_file_path = self.config.xml_path
 

@@ -9,7 +9,7 @@ if __name__ == "__main__":
     import matplotlib
     matplotlib.use('Agg')
 
-from dp_env_v3 import DPEnv
+from deepmimic_env import DPEnv
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecVideoRecorder
