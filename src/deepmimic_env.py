@@ -226,6 +226,8 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
                 path = "/tmp/deepmimic_episode_{}.log".format(time.strftime("%Y%m%d-%H%M_%S"))
                 with open(path, "w") as f:
                     self.episode_debug_log["full_traceback"] = full_traceback
+                    self.episode_debug_log["motion"] = self.config.motion
+                    self.episode_debug_log["robot"] = self.config.robot
                     f.write(json.dumps(self.episode_debug_log, indent=4))
                 print("Error in step, debug log written to {}".format(path))
                 done = True
