@@ -3,6 +3,9 @@ import numpy as np
 import math
 import random
 from os import getcwd
+import json
+import traceback
+import time
 
 from mujoco.mocap_v2 import MocapDM
 from mujoco.mujoco_interface import MujocoInterface
@@ -81,6 +84,8 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 
         self.episode_reward = 0
         self.episode_length = 0
+
+        self.episode_debug_log = {}
 
         mujoco_env.MujocoEnv.__init__(self, xml_file_path, 6)
         utils.EzPickle.__init__(self)
@@ -213,7 +218,19 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             qpos, qvel = force_state
             self.set_state(qpos, qvel)
         else:
-            self.do_simulation(action, step_times)
+            try:
+                self.do_simulation(action, step_times)
+            except: # With unitree G1, sometimes the simulation diverges. Here, we log to disk and reset
+                full_traceback = traceback.format_exc()
+                # write debug log and traceback to /tmp/ for debugging
+                path = "/tmp/deepmimic_episode_{}.log".format(time.strftime("%Y%m%d-%H%M_%S"))
+                with open(path, "w") as f:
+                    self.episode_debug_log["full_traceback"] = full_traceback
+                    f.write(json.dumps(self.episode_debug_log, indent=4))
+                print("Error in step, debug log written to {}".format(path))
+                done = True
+                return self._get_obs() * 0., 0, done, {}
+
         # pos_after = mass_center(self.model, self.sim)
 
         # Observation
@@ -304,6 +321,15 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         self.episode_reward += reward
         self.episode_length += 1
 
+        # debug log
+        self.episode_debug_log.setdefault("action", []).append(np.array(action * 1.).tolist())
+        self.episode_debug_log.setdefault("body_xpos", []).append(np.array(self.sim.data.body_xpos * 1.).tolist())
+        self.episode_debug_log.setdefault("body_xvelp", []).append(np.array(self.sim.data.body_xvelp * 1.).tolist())
+        self.episode_debug_log.setdefault("qpos", []).append(np.array(self.sim.data.qpos * 1.).tolist())
+        self.episode_debug_log.setdefault("qvel", []).append(np.array(self.sim.data.qvel * 1.).tolist())
+        self.episode_debug_log.setdefault("reward", []).append(reward)
+
+
         return observation, reward, done, info
 
     def is_done(self):
@@ -319,6 +345,7 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
     def reset(self):
         self.episode_reward = 0
         self.episode_length = 0
+        self.episode_debug_log = {}
         return self.reset_model()
 
     def reset_model(self, idx_init=None):
