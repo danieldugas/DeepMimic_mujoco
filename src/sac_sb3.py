@@ -81,7 +81,7 @@ if __name__ == "__main__":
                 )
     print("Begin Learn")
     print("-----------")
-    model.learn(total_timesteps=100*M, tb_log_name=run.name, callback=EvalDashboardCallback(eval_env, motion + task + "_" + run.name, log_wandb=not DBG_NO_WANDB))
+    model.learn(total_timesteps=TOT, tb_log_name=run.name, callback=EvalDashboardCallback(eval_env, motion + task + "_" + run.name, log_wandb=not DBG_NO_WANDB))
     model.save(os.path.expanduser("~/deep_mimic/" + run.name))
 
     del model # remove to demonstrate saving and loading
