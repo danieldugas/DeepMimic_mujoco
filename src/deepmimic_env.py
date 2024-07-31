@@ -223,11 +223,12 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             except: # With unitree G1, sometimes the simulation diverges. Here, we log to disk and reset
                 full_traceback = traceback.format_exc()
                 # write debug log and traceback to /tmp/ for debugging
-                path = "/tmp/deepmimic_episode_{}.log".format(time.strftime("%Y%m%d-%H%M_%S"))
+                path = "/tmp/deepmimic_episode_{}.json".format(time.strftime("%Y%m%d-%H%M_%S"))
+                self.episode_debug_log["last_action"] = np.array(action * 1.).tolist()
+                self.episode_debug_log["full_traceback"] = full_traceback
+                self.episode_debug_log["motion"] = self.config.motion
+                self.episode_debug_log["robot"] = self.config.robot
                 with open(path, "w") as f:
-                    self.episode_debug_log["full_traceback"] = full_traceback
-                    self.episode_debug_log["motion"] = self.config.motion
-                    self.episode_debug_log["robot"] = self.config.robot
                     f.write(json.dumps(self.episode_debug_log, indent=4))
                 print("Error in step, debug log written to {}".format(path))
                 done = True
@@ -331,6 +332,18 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         self.episode_debug_log.setdefault("qvel", []).append(np.array(self.sim.data.qvel * 1.).tolist())
         self.episode_debug_log.setdefault("reward", []).append(reward)
 
+        if np.max(observation) > 100.0 or np.min(observation) < -100.0:
+            full_traceback = "Observation out of bounds (deepmimic_env step)"
+            # write debug log and traceback to /tmp/ for debugging
+            path = "/tmp/deepmimic_episode_{}.json".format(time.strftime("%Y%m%d-%H%M_%S"))
+            self.episode_debug_log["full_traceback"] = full_traceback
+            self.episode_debug_log["motion"] = self.config.motion
+            self.episode_debug_log["robot"] = self.config.robot
+            with open(path, "w") as f:
+                f.write(json.dumps(self.episode_debug_log, indent=4))
+            print("Observation out of bounds in step, debug log written to {}".format(path))
+            done = True
+            return self._get_obs() * 0., 0, done, {}
 
         return observation, reward, done, info
 
