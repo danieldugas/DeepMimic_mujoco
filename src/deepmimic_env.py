@@ -47,7 +47,7 @@ class DPEnvConfig:
         self.ADD_PHASE_OBS = True
 
 class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.9HR.unitree_g1_walk_and_run"
+    version = "v0.9HRS.unitree_g1_walk_and_run_fix_singularities"
     CFG = DPEnvConfig()
     def __init__(self, motion=None, load_mocap=True, robot="humanoid3d"):
         self.config = Config(motion=motion, robot=robot)
@@ -423,6 +423,15 @@ def test_walk_hand_xpos_mocap(human=False):
         plt.plot(mocap_hand_xpos)
         plt.show()
 
+def loop_motion(motion, robot):
+    env = DPEnv(motion=motion, robot=robot)
+    env.reset_model(idx_init=0)
+    while True:
+        qpos = env.mocap.data_config[env.idx_curr]
+        qvel = env.mocap.data_vel[env.idx_curr]
+        obs, rew, done, info = env.step(np.zeros(env.action_space.shape[0]), force_state=(qpos, qvel))
+        env.render(mode="human")
+
 def check_rewards_and_joint_limits(motion, robot):
     env = DPEnv(motion=motion, robot=robot)
     env.reset_model(idx_init=0)
@@ -488,4 +497,5 @@ def check_rewards_and_joint_limits(motion, robot):
     plt.show()
 
 if __name__ == "__main__":
+    # loop_motion("getup_faceup", "humanoid3d")
     check_rewards_and_joint_limits(motion="getup_facedown", robot="humanoid3d")

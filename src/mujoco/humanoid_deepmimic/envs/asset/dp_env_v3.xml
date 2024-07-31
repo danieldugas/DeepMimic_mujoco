@@ -4,7 +4,7 @@
         <joint limited="true" armature="1" damping="1"/>
         <geom conaffinity="1" condim="1" contype="1" margin="0.001" rgba="0.7 0.5 .3 1"/>
         <site rgba="0.7 0.5 0.3 1"/>
-        <motor ctrllimited="true" ctrlrange="-2.0 2.0"/>
+        <motor ctrllimited="true" ctrlrange="-0.5 0.5"/>
     </default>
     <option integrator="RK4" iterations="50" solver="PGS" timestep="0.0166">
     </option>
@@ -43,7 +43,7 @@
                     <site name="joint_right_shoulder" pos="0 0 0" size="0.04" type="sphere"/>
                     <joint name="right_shoulder_x" axis="1 0 0" pos="0 0 0" range="-3.14 0.5" type="hinge"/>
                     <joint name="right_shoulder_y" axis="0 1 0" pos="0 0 0" range="-3.14 0.7" type="hinge"/>
-                    <joint name="right_shoulder_z" axis="0 0 1" pos="0 0 0" range="-2.2 2.2" type="hinge"/>
+                    <joint name="right_shoulder_z" axis="0 0 1" pos="0 0 0" range="-1.5 1.5" type="hinge"/>
                     <body name="right_elbow" pos="0 0 -0.274788">
                         <geom fromto="0 0 -0.0525 0 0 -0.1875" name="right_elbow" mass="1.0" size="0.04" type="capsule"/>
                         <joint axis="0 -1 0" name="right_elbow" pos="0 0 0" range="0 2.8" type="hinge"/>
@@ -56,7 +56,7 @@
                     <geom fromto="0 0 -0.05 0 0 -0.23" name="left_shoulder" mass="1.5" size="0.045" type="capsule"/>
                     <joint name="left_shoulder_x" axis="1 0 0" pos="0 0 0" range="-0.5 3.14"  type="hinge"/>
                     <joint name="left_shoulder_y" axis="0 1 0" pos="0 0 0" range="-3.14 0.7"  type="hinge"/>
-                    <joint name="left_shoulder_z" axis="0 0 1" pos="0 0 0" range="-2.2 2.2"  type="hinge"/>
+                    <joint name="left_shoulder_z" axis="0 0 1" pos="0 0 0" range="-1.5 1.5"  type="hinge"/>
                     <site name="joint_left_shoulder" pos="0 0 0" size="0.04" type="sphere"/>
                     <body name="left_elbow" pos="0 0 -0.274788">
                         <geom fromto="0 0 -0.0525 0 0 -0.1875" name="left_elbow" mass="1.0" size="0.04" type="capsule"/>
@@ -69,13 +69,13 @@
             <body name="right_hip" pos="0 -0.084887 0">
                 <geom fromto="0 0 -0.06 0 0 -0.36" name="right_hip" mass="4.5" size="0.055" type="capsule"/>
                 <site name="joint_right_hip" pos="0 0 0" size="0.045" type="sphere"/>
-                <joint name="right_hip_x" axis="1 0 0" pos="0 0 0" range="-3.14 3.14" type="hinge"/>
+                <joint name="right_hip_x" axis="1 0 0" pos="0 0 0" range="-1.2 1.2" type="hinge"/>
                 <joint name="right_hip_y" axis="0 1 0" pos="0 0 0" range="-2.57 1.57" type="hinge"/>
-                <joint name="right_hip_z" axis="0 0 1" pos="0 0 0" range="-3.14 3.14" type="hinge"/>
+                <joint name="right_hip_z" axis="0 0 1" pos="0 0 0" range=" -1.0 1.0" type="hinge"/>
                 <body name="right_knee" pos="0 0 -0.421546">
                     <geom fromto="0 0 -0.045 0 0 -0.355" name="right_knee" mass="3.0" size="0.05" type="capsule"/>
                     <site name="joint_right_knee" pos="0 0 0" size="0.035" type="sphere"/>
-                    <joint axis="0 -1 0" name="right_knee" pos="0 0 0" range="-2.7 0.1" type="hinge"/>
+                    <joint axis="0 -1 0" name="right_knee" pos="0 0 0" range="-2.7 0.0" type="hinge"/>
                     <body name="right_ankle" pos="0 0 -0.40987">
                         <joint name="right_ankle_x" axis="1 0 0" pos="0 0 0" range="-1.0 1.0" type="hinge"/>
                         <joint name="right_ankle_y" axis="0 1 0" pos="0 0 0" range="-1.0 1.57" type="hinge"/>
@@ -88,13 +88,13 @@
             <body name="left_hip" pos="0 0.084887 0">
                 <geom fromto="0 0 -0.06 0 0 -0.36" name="left_hip" mass="4.5" size="0.055" type="capsule"/>
                 <site name="joint_left_hip" pos="0 0 0" size="0.045" type="sphere"/>
-                <joint name="left_hip_x" axis="1 0 0" pos="0 0 0" range="-3.14 3.14" type="hinge"/>
+                <joint name="left_hip_x" axis="1 0 0" pos="0 0 0" range="-1.2 1.2" type="hinge"/>
                 <joint name="left_hip_y" axis="0 1 0" pos="0 0 0" range="-2.57 1.57" type="hinge"/>
-                <joint name="left_hip_z" axis="0 0 1" pos="0 0 0" range="-3.14 3.14" type="hinge"/>
+                <joint name="left_hip_z" axis="0 0 1" pos="0 0 0" range="-1.0 1.0" type="hinge"/>
                 <body name="left_knee" pos="0 0 -0.421546">
                     <geom fromto="0 0 -0.045 0 0 -0.355" name="left_knee" mass="3.0" size="0.05" type="capsule"/>
                     <site name="joint_left_knee" pos="0 0 0" size="0.035" type="sphere"/>
-                    <joint axis="0 -1 0" name="left_knee" pos="0 0 0" range="-2.7 0.1" type="hinge"/>
+                    <joint axis="0 -1 0" name="left_knee" pos="0 0 0" range="-2.7 0.0" type="hinge"/>
                     <body name="left_ankle" pos="0 0 -0.40987">
                         <joint name="left_ankle_x" axis="1 0 0" pos="0 0 0" range="-1.0 1.0" type="hinge"/>
                         <joint name="left_ankle_y" axis="0 1 0" pos="0 0 0" range="-1.0 1.57" type="hinge"/>

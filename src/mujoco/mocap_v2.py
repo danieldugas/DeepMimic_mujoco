@@ -79,6 +79,10 @@ class MocapDM(object):
             self.data_vel = []
             self.data_config = []
 
+            self.singularity_quat_error = {}
+            self.singularity_orig_config = {}
+            self.singularity_config = {}
+
             for k in range(len(self.all_states)):
                 tmp_vel = []
                 tmp_angle = []
@@ -129,14 +133,107 @@ class MocapDM(object):
                         assert 4 == len(tmp_val)
                         offset_idx += 4
                         self.data[k, init_idx:offset_idx] = state[each_joint]
+                        quat_wxyz = state[each_joint]
+                        quat = np.array([quat_wxyz[1], quat_wxyz[2], quat_wxyz[3], quat_wxyz[0]]) # xyzw
+                        euler_tuple = euler_from_quaternion(quat, axes='rxyz')
+                        FIX_SINGULARITY_MODE = "continuity" # "continuity" or "limits" or "none"
+                        if True:
+                            # FIX SINGULARITY
+                            # in some mocap, the euler angles obtained from quaternions are not smooth, and sometimes exceed joint limits
+                            # this is due to instability/singularity around the pitch = -90 degrees point
+                            # here, we try to remove these discontinuites while keeping the error w.r.t to original motion as small as possible
+                            BALL_JOINTS = ["left_shoulder", "right_shoulder", "left_hip", "right_hip"]
+                            EX_LIM_MIN = {"left_shoulder": -0.50, "right_shoulder": -3.14, "left_hip": -1.2, "right_hip": -1.2}
+                            EX_LIM_MAX = {"left_shoulder":  3.14, "right_shoulder":  0.50, "left_hip":  1.2, "right_hip":  1.2}
+                            EY_LIM_MIN = {"left_shoulder": -3.14, "right_shoulder": -3.14, "left_hip": -2.57, "right_hip": -2.57}
+                            EY_LIM_MAX = {"left_shoulder":  0.70, "right_shoulder":  0.70, "left_hip":  1.57, "right_hip":  1.57}
+                            EZ_LIM_MIN = {"left_shoulder": -1.50, "right_shoulder": -1.50, "left_hip": -1.0, "right_hip": -1.0}
+                            EZ_LIM_MAX = {"left_shoulder":  1.50, "right_shoulder":  1.50, "left_hip":  1.0, "right_hip":  1.0}
+                            best_error = 0
+                            VMX = 10. # higher: we allow for faster movements, but may also miss some discontinuities
+                            if "getup" in filepath:
+                                VMX = 5. # works better for eliminating singularity
+                            if each_joint in BALL_JOINTS:
+                                ex, ey, ez = euler_tuple
+                                # previous
+                                # p: previous, n: new, c: candidate
+                                if k == 0:
+                                    quatp = all_states[k][each_joint]
+                                    exp, eyp, ezp = euler_from_quaternion(np.array([quatp[1], quatp[2], quatp[3], quatp[0]]), axes='rxyz')
+                                else:
+                                    exp = self.singularity_config[each_joint + "_x"][-1]
+                                    eyp = self.singularity_config[each_joint + "_y"][-1]
+                                    ezp = self.singularity_config[each_joint + "_z"][-1]
+                                if FIX_SINGULARITY_MODE == "limits":
+                                    is_lim_exceeded = ex < EX_LIM_MIN[each_joint] or ex > EX_LIM_MAX[each_joint] or ez < EZ_LIM_MIN[each_joint] or ez > EZ_LIM_MAX[each_joint]
+                                elif FIX_SINGULARITY_MODE == "continuity":
+                                    # is_lim_exceeded = (np.max(np.abs([ex - exp, ey - eyp, ez - ezp])) / self.dt)  > VMX
+                                    is_lim_exceeded = True
+                                elif FIX_SINGULARITY_MODE == "none":
+                                    is_lim_exceeded = False
+                                if is_lim_exceeded:
+                                    # print("Joint limit exceeded in {}".format(each_joint))
+                                    # find ezn that leads to closest quat value
+                                    best_error = np.inf
+                                    if FIX_SINGULARITY_MODE == "limits":
+                                        # pin ex to previous value
+                                        eyn = ey
+                                        singularity = -np.pi / 2.
+                                        singularity_dist = abs(ey - singularity)
+                                        for eyc in [ey]:
+                                            for exc in np.linspace(EX_LIM_MIN[each_joint], EX_LIM_MAX[each_joint], 20):
+                                                for ezc in np.linspace(EZ_LIM_MIN[each_joint], EZ_LIM_MAX[each_joint], 20):
+                                                    quatn = quaternion_from_euler(exc, eyc, ezc, axes='rxyz')
+                                                    error = np.linalg.norm(quatn - quat)**2
+                                                    if error < best_error:
+                                                        best_error = error
+                                                        exn = exc
+                                                        eyn = eyc
+                                                        ezn = ezc
+                                    elif FIX_SINGULARITY_MODE == "continuity":
+                                        ex_min = max(EX_LIM_MIN[each_joint], exp - (VMX * self.dt))
+                                        ex_max = min(EX_LIM_MAX[each_joint], exp + (VMX * self.dt))
+                                        ey_min = max(EY_LIM_MIN[each_joint], eyp - (VMX * self.dt))
+                                        ey_max = min(EY_LIM_MAX[each_joint], eyp + (VMX * self.dt))
+                                        ez_min = max(EZ_LIM_MIN[each_joint], ezp - (VMX * self.dt))
+                                        ez_max = min(EZ_LIM_MAX[each_joint], ezp + (VMX * self.dt))
+                                        ex_tgt = np.clip(ex, ex_min, ex_max)
+                                        ey_tgt = np.clip(ey, ey_min, ey_max)
+                                        ez_tgt = np.clip(ez, ez_min, ez_max)
+                                        # if the desired values are within tolerance, just use them
+                                        if np.allclose([ex, ey, ez], [ex_tgt, ey_tgt, ez_tgt]):
+                                            exn = ex
+                                            eyn = ey
+                                            ezn = ez
+                                            best_error = 0
+                                        else:
+                                            for exc in [ex_tgt, exp] + list(np.linspace(ex_min, ex_max, 6)):
+                                                for eyc in [ey_tgt, eyp] + list(np.linspace(ey_min, ey_max, 6)):
+                                                    for ezc in [ez_tgt, ezp] + list(np.linspace(ez_min, ez_max, 6)):
+                                                        quatn = quaternion_from_euler(exc, eyc, ezc, axes='rxyz')
+                                                        error = min(np.linalg.norm(quatn - quat), np.linalg.norm(-quatn - quat))**2 # + 0.1 * np.linalg.norm([exc - exp, eyc - eyp, ezc - ezp])**2
+                                                        if error < best_error:
+                                                            best_error = error
+                                                            exn = exc
+                                                            eyn = eyc
+                                                            ezn = ezc
+                                    euler_tuple = (exn, eyn, ezn)
+                                self.singularity_quat_error.setdefault(each_joint + "_x", []).append(best_error)
+                                self.singularity_quat_error.setdefault(each_joint + "_y", []).append(best_error)
+                                self.singularity_quat_error.setdefault(each_joint + "_z", []).append(best_error)
+                                self.singularity_orig_config.setdefault(each_joint + "_x", []).append(ex)
+                                self.singularity_orig_config.setdefault(each_joint + "_y", []).append(ey)
+                                self.singularity_orig_config.setdefault(each_joint + "_z", []).append(ez)
+                                self.singularity_config.setdefault(each_joint + "_x", []).append(euler_tuple[0])
+                                self.singularity_config.setdefault(each_joint + "_y", []).append(euler_tuple[1])
+                                self.singularity_config.setdefault(each_joint + "_z", []).append(euler_tuple[2])
+                        tmp_angle += list(euler_tuple)
+                        # qvel (no longer used, to be removed)
                         if k == 0:
                             tmp_vel += [0.0, 0.0, 0.0]
                         else:
-                            tmp_vel += self.calc_rot_vel(self.data[k, init_idx:offset_idx], self.data[k-1, init_idx:offset_idx], dura)
-                        quat = state[each_joint]
-                        quat = np.array([quat[1], quat[2], quat[3], quat[0]])
-                        euler_tuple = euler_from_quaternion(quat, axes='rxyz')
-                        tmp_angle += list(euler_tuple)
+                            prev_quat_wxyz = self.all_states[k-1][each_joint]
+                            tmp_vel += self.calc_rot_vel(quat_wxyz, prev_quat_wxyz, dura)
                         ## For testing
                         # quat_after = quaternion_from_euler(euler_tuple[0], euler_tuple[1], euler_tuple[2], axes='rxyz')
                         # np.set_printoptions(precision=4, suppress=True)
@@ -145,26 +242,46 @@ class MocapDM(object):
                         #     import pdb
                         #     pdb.set_trace()
                         #     print(diff)
-                self.data_vel.append(np.array(tmp_vel))
+                # self.data_vel.append(np.array(tmp_vel))
                 self.data_config.append(np.array(tmp_angle))
+
+            if False:
+                # check singularity fix
+                from matplotlib import pyplot as plt
+                fig, axs = plt.subplots(len(BALL_JOINTS), 3, figsize=(10, 10))
+                for col, joint_name in enumerate(BALL_JOINTS):
+                    for row, axis in enumerate(["x", "y", "z"]):
+                        axs[col, row].plot(self.singularity_quat_error[joint_name + "_" + axis], label="quat_error")
+                        axs[col, row].plot(self.singularity_orig_config[joint_name + "_" + axis], label="orig")
+                        axs[col, row].plot(self.singularity_config[joint_name + "_" + axis], label="new")
+                        axs[col, row].set_title(joint_name + "_" + axis)
+                    axs[col, 0].axhline(EX_LIM_MAX[joint_name], color='r', linestyle='--')
+                    axs[col, 0].axhline(EX_LIM_MIN[joint_name], color='r', linestyle='--')
+                    axs[col, 1].axhline(EY_LIM_MAX[joint_name], color='r', linestyle='--')
+                    axs[col, 1].axhline(EY_LIM_MIN[joint_name], color='r', linestyle='--')
+                    axs[col, 2].axhline(EZ_LIM_MAX[joint_name], color='r', linestyle='--')
+                    axs[col, 2].axhline(EZ_LIM_MIN[joint_name], color='r', linestyle='--')
+                plt.legend()
+                plt.show()
         else:
             self.data_config = motions[:, 1:]
-            # calculate velocity
-            self.data_vel = []
-            for k in range(len(self.data_config)):
-                kp = k - 1
-                if k == 0:
-                    kp = 0
-                prev_root_xyz = self.data_config[kp][:3]
-                prev_root_qxyz = self.data_config[kp][3:7]
-                prev_rest = self.data_config[kp][7:]
-                next_root_xyz = self.data_config[k][:3]
-                next_root_qxyz = self.data_config[k][3:7]
-                next_rest = self.data_config[k][7:]
-                vel_root_xyz = (next_root_xyz - prev_root_xyz) / self.dt
-                vel_root_qxyz = self.calc_rot_vel(prev_root_qxyz, next_root_qxyz, self.dt)
-                vel_rest = (next_rest - prev_rest) / self.dt
-                self.data_vel.append(np.concatenate([vel_root_xyz, vel_root_qxyz, vel_rest]))
+
+        # calculate velocity
+        self.data_vel = []
+        for k in range(len(self.data_config)):
+            kp = k - 1
+            if k == 0:
+                kp = 0
+            prev_root_xyz = self.data_config[kp][:3]
+            prev_root_qxyz = self.data_config[kp][3:7]
+            prev_rest = self.data_config[kp][7:]
+            next_root_xyz = self.data_config[k][:3]
+            next_root_qxyz = self.data_config[k][3:7]
+            next_rest = self.data_config[k][7:]
+            vel_root_xyz = (next_root_xyz - prev_root_xyz) / self.dt
+            vel_root_qxyz = self.calc_rot_vel(prev_root_qxyz, next_root_qxyz, self.dt)
+            vel_rest = (next_rest - prev_rest) / self.dt
+            self.data_vel.append(np.concatenate([vel_root_xyz, vel_root_qxyz, vel_rest]))
 
         
         if True:
