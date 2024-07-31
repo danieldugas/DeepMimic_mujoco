@@ -163,8 +163,9 @@ def parse_reason(required=True):
 if __name__ == "__main__":
     DBG_NO_WANDB = False
     reason = parse_reason(required=not DBG_NO_WANDB)
-    motion = "getup_facedown"
+    motion = "walk"
     task = ""
+    robot = "unitree_g1"
     M = 1000000
     # train a policy
     # hyperparams
@@ -189,6 +190,7 @@ if __name__ == "__main__":
         "env_name": "deep_mimic_mujoco",
         "motion": motion,
         "task": task,
+        "robot": robot,
         "version": DPEnv.version,
         "env_cfg": DPEnv.CFG.__dict__.copy(),
         "arch": policy_kwargs["net_arch"],
@@ -209,14 +211,14 @@ if __name__ == "__main__":
             monitor_gym=True,  # auto-upload the videos of agents playing the game
             save_code=True,  # optional
         )
-    eval_env = DPEnv(motion=motion)
-    envs = SubprocVecEnv([lambda: DPEnv(motion=motion) for i in range(N_AG)])
+    eval_env = DPEnv(motion=motion, robot=robot)
+    envs = SubprocVecEnv([lambda: DPEnv(motion=motion, robot=robot) for i in range(N_AG)])
     model = PPO(MlpPolicy, envs, policy_kwargs=policy_kwargs, verbose=1,
                     tensorboard_log=os.path.expanduser("~/tensorboard/"),
                     n_steps=HRZ, learning_rate=LR, n_epochs=EPOCHS, batch_size=minibatch_size)
     print("Begin Learn")
     print("-----------")
-    model.learn(total_timesteps=100*M, tb_log_name=run.name, callback=EvalDashboardCallback(
+    model.learn(total_timesteps=TOT, tb_log_name=run.name, callback=EvalDashboardCallback(
         eval_env, motion + task + "_" + run.name, log_wandb=not DBG_NO_WANDB))
     model.save(os.path.expanduser("~/deep_mimic/" + run.name))
 
