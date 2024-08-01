@@ -20,9 +20,9 @@ from sb3_ppo import EvalDashboardCallback, parse_reason
 if __name__ == "__main__":
     DBG_NO_WANDB = False
     reason = parse_reason(required=not DBG_NO_WANDB)
-    motion = "walk"
+    motion = "getup_facedown"
     task = ""
-    robot = "unitree_g1"
+    robot = "humanoid3d"
     M = 1000000
     # train a policy
     # hyperparams
@@ -33,7 +33,7 @@ if __name__ == "__main__":
     EPOCHS = 20
     LR = 0.0004
     LOG_FREQ = 1*M // N_AG # log every 1M global steps
-    BUFFER_SIZE = 1*M
+    BUFFER_SIZE = 5*M
     policy_kwargs = dict(net_arch=[1024, 512])
     # run info
     class Run:
