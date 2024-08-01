@@ -223,18 +223,18 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         if self.CFG.NORMALIZE_ACTION:
             actmin = self.model.actuator_ctrlrange[:, 0]
             actmax = self.model.actuator_ctrlrange[:, 1]
-            normact = (action - actmin) / (actmax - actmin) * 2.0 - 1.0
-            # if act = actmin -> 0 / D * 2.0 - 1. = -1
-            # if act = actmax -> 2 - 1 = 1
+            mujocoact = 0.5 * (actmax + actmin) + 0.5 * (actmax - actmin) * action
+            # if act = -1 -> 0.5 * 0 + 0.5 * (200) * -1 -> actmin
+            # if act = 1 -> actmax
         else:
-            normact = action
+            mujocoact = action
         # pos_before = mass_center(self.model, self.sim)
         if force_state is not None:
             qpos, qvel = force_state
             self.set_state(qpos, qvel)
         else:
             try:
-                self.do_simulation(normact, step_times)
+                self.do_simulation(mujocoact, step_times)
             except: # With unitree G1, sometimes the simulation diverges. Here, we log to disk and reset
                 full_traceback = traceback.format_exc()
                 # write debug log and traceback to /tmp/ for debugging
