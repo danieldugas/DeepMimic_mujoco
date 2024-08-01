@@ -170,8 +170,8 @@ if __name__ == "__main__":
     # train a policy
     # hyperparams
     TOT = 100*M
-    N_AG = 16
-    HRZ = 256
+    N_AG = 32
+    HRZ = 4096
     MINIB = 512
     EPOCHS = 20
     LR = 0.0004
