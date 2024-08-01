@@ -92,8 +92,8 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         utils.EzPickle.__init__(self)
 
         if self.CFG.NORMALIZE_ACTION:
-            self.action_space.low = -1.0
-            self.action_space.high = 1.0
+            self.action_space.low = np.array([-1.0 for _ in range(self.action_space.shape[0])])
+            self.action_space.high = np.array([1.0 for _ in range(self.action_space.shape[0])])
 
     def _get_obs(self):
         position = self.sim.data.qpos.flat.copy()[7:] # ignore root joint
@@ -450,6 +450,7 @@ def loop_motion(motion, robot):
 def check_rewards_and_joint_limits(motion, robot):
     env = DPEnv(motion=motion, robot=robot)
     env.reset_model(idx_init=0)
+    RANDOMACT = False
     # Play episode
     # -----------
     action_size = env.action_space.shape[0]
@@ -459,7 +460,11 @@ def check_rewards_and_joint_limits(motion, robot):
     while True:
         qpos = env.mocap.data_config[env.idx_curr]
         qvel = env.mocap.data_vel[env.idx_curr]
-        obs, rew, done, info = env.step(ac, force_state=(qpos, qvel))
+        force_state = (qpos, qvel)
+        if RANDOMACT:
+            ac = env.action_space.sample()
+            force_state = None
+        obs, rew, done, info = env.step(ac, force_state=force_state)
         if env.idx_curr >= env.mocap_data_len - 1:
             done = True
         # obs, rew, _, info = env.step(ac) # checks how a small deviation affects the reward
@@ -513,4 +518,4 @@ def check_rewards_and_joint_limits(motion, robot):
 
 if __name__ == "__main__":
     # loop_motion("getup_faceup", "humanoid3d")
-    check_rewards_and_joint_limits(motion="getup_facedown", robot="humanoid3d")
+    check_rewards_and_joint_limits(motion="walk", robot="unitree_g1")
