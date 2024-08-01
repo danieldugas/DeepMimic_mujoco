@@ -43,11 +43,12 @@ class DPEnvConfig:
         self.ADD_FOOT_CONTACT_OBS = True
         self.ADD_TORSO_OBS = True
         self.ADD_JOINT_FORCE_OBS = False
-        self.ADD_ABSPOS_OBS = True
+        self.ADD_ABSPOS_OBS = False
         self.ADD_PHASE_OBS = True
+        self.NORMALIZE_ACTION = True
 
 class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.9HRS.unitree_g1_walk_and_run_fix_singularities"
+    version = "v0.9HRS.no_abspos_normact"
     CFG = DPEnvConfig()
     def __init__(self, motion=None, load_mocap=True, robot="humanoid3d"):
         self.config = Config(motion=motion, robot=robot)
@@ -89,6 +90,10 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 
         mujoco_env.MujocoEnv.__init__(self, xml_file_path, 6)
         utils.EzPickle.__init__(self)
+
+        if self.CFG.NORMALIZE_ACTION:
+            self.action_space.low = -1.0
+            self.action_space.high = 1.0
 
     def _get_obs(self):
         position = self.sim.data.qpos.flat.copy()[7:] # ignore root joint
@@ -213,13 +218,23 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         self.step_len = 1
         # step_times = int(self.mocap_dt // self.model.opt.timestep)
         step_times = 1
+
+        # normalize action
+        if self.CFG.NORMALIZE_ACTION:
+            actmin = self.model.actuator_ctrlrange[:, 0]
+            actmax = self.model.actuator_ctrlrange[:, 1]
+            normact = (action - actmin) / (actmax - actmin) * 2.0 - 1.0
+            # if act = actmin -> 0 / D * 2.0 - 1. = -1
+            # if act = actmax -> 2 - 1 = 1
+        else:
+            normact = action
         # pos_before = mass_center(self.model, self.sim)
         if force_state is not None:
             qpos, qvel = force_state
             self.set_state(qpos, qvel)
         else:
             try:
-                self.do_simulation(action, step_times)
+                self.do_simulation(normact, step_times)
             except: # With unitree G1, sometimes the simulation diverges. Here, we log to disk and reset
                 full_traceback = traceback.format_exc()
                 # write debug log and traceback to /tmp/ for debugging
