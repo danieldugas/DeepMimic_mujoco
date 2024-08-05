@@ -163,13 +163,13 @@ def parse_reason(required=True):
 if __name__ == "__main__":
     DBG_NO_WANDB = False
     reason = parse_reason(required=not DBG_NO_WANDB)
-    motion = "walk"
+    motion = "run"
     task = ""
     robot = "unitree_g1"
     M = 1000000
     # train a policy
     # hyperparams
-    TOT = 100*M
+    TOT = 200*M
     N_AG = 32
     HRZ = 4096
     MINIB = 512
@@ -182,7 +182,7 @@ if __name__ == "__main__":
         name = "test" + time.strftime("%Y%m%d-%H%M_%S")
     run = Run()
     batch_size = HRZ * N_AG
-    minibatch_size = 256
+    minibatch_size = 4096
     config = {
         "run_reason": reason,
         "policy_type": "MlpPolicy",
