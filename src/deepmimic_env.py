@@ -14,6 +14,7 @@ from mujoco_py import load_model_from_xml, MjSim, MjViewer
 
 from gym.envs.mujoco import mujoco_env
 from gym import utils
+from gym.spaces import Box
 
 from config import Config
 from pyquaternion import Quaternion
@@ -47,7 +48,7 @@ class DPEnvConfig:
         self.ADD_PHASE_OBS = True
 
 class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.9HRS.no_abpos_20xactscale"
+    version = "v0.9HRS.no_hands_20xact"
     CFG = DPEnvConfig()
     def __init__(self, motion=None, load_mocap=True, robot="humanoid3d"):
         self.config = Config(motion=motion, robot=robot)
@@ -89,6 +90,11 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 
         mujoco_env.MujocoEnv.__init__(self, xml_file_path, 6)
         utils.EzPickle.__init__(self)
+
+        # action space: remove last 14 dims (hand actions)
+        if self.config.robot == "unitree_g1":
+            N = self.action_space.shape[0] - 14
+            self.action_space = Box(low=self.action_space.low[:N], high=self.action_space.high[:N])
 
     def _get_obs(self):
         position = self.sim.data.qpos.flat.copy()[7:] # ignore root joint
@@ -213,13 +219,22 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         self.step_len = 1
         # step_times = int(self.mocap_dt // self.model.opt.timestep)
         step_times = 1
+
+        # action pre-processing
+        mujoco_action = action * 1.
+        if self.config.robot == "unitree_g1":
+            mujoco_action = action * 20.
+            if len(mujoco_action) == self.sim.data.ctrl.shape[0] - 14: # need to check because mujoco_env init does a step with full action space
+                mujoco_action = np.concatenate((mujoco_action, np.zeros(14))) # add 14 hand actions (0)
+        assert len(mujoco_action) == self.sim.data.ctrl.shape[0]
+
         # pos_before = mass_center(self.model, self.sim)
         if force_state is not None:
             qpos, qvel = force_state
             self.set_state(qpos, qvel)
         else:
             try:
-                self.do_simulation(action * 20., step_times)
+                self.do_simulation(mujoco_action, step_times)
             except: # With unitree G1, sometimes the simulation diverges. Here, we log to disk and reset
                 full_traceback = traceback.format_exc()
                 # write debug log and traceback to /tmp/ for debugging
@@ -249,9 +264,19 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         # Joint Reward
         err_configs = 0.0
         target_config = self.mocap.data_config[self.idx_curr][7:] # to exclude root joint
-        self.curr_frame = target_config
         curr_config = self.sim.data.qpos[7:] # to exclude root joint
+        target_qvel = self.mocap.data_vel[self.idx_curr][6:] # to exclude root joint
+        current_qvel = self.sim.data.qvel[6:] # to exclude root joint
+        if self.config.robot == "unitree_g1":
+            # [self.model.get_joint_qpos_addr(n) for n in self.model.joint_names]
+            qpos_idx = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,   32, 33, 34, 35, 36   ] # exclude root and hand joints
+            qvel_idx = [6, 7, 8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,   31, 32, 33, 34, 35   ]
+            target_config = self.mocap.data_config[self.idx_curr][qpos_idx] # to exclude root joint
+            curr_config = self.sim.data.qpos[qpos_idx] # to exclude root joint
+            target_qvel = self.mocap.data_vel[self.idx_curr][qvel_idx] # to exclude root joint
+            current_qvel = self.sim.data.qvel[qvel_idx] # to exclude root joint
         assert len(curr_config) == len(target_config)
+        self.curr_frame = target_config
         err_configs = np.sum(np.abs(curr_config - target_config))
         # pitch error (pitch is -1.57 to 1.57)
         w,x,y,z = self.sim.data.qpos[3:7]
@@ -262,8 +287,6 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         err_configs += err_pitch # adds pitch error to total error
         reward_config = math.exp(-err_configs)
         # QVel Reward
-        target_qvel = self.mocap.data_vel[self.idx_curr][6:] # to exclude root joint
-        current_qvel = self.sim.data.qvel[6:] # to exclude root joint
         assert len(target_qvel) == len(current_qvel)
         err_qvel = np.sum(np.abs(target_qvel - current_qvel))
         reward_qvel = math.exp(-0.1 * err_qvel)
@@ -284,6 +307,9 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         # Joint limit reward
         jnt_tol = self.model.jnt_range[1:] * 0.95
         jnt_pos = self.sim.data.qpos[7:]
+        if self.config.robot == "unitree_g1":
+            jnt_tol = jnt_tol[(np.array(qpos_idx) - 7)]
+            jnt_pos = jnt_pos[(np.array(qpos_idx) - 7)]
         qlim_err = np.sum((jnt_pos <= jnt_tol[:,0]) + (jnt_pos >= jnt_tol[:, 1])) / len(jnt_pos) # 0-1
         # Sum reward
         wp = 0.75
@@ -308,13 +334,16 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             xpos = self.sim.data.xipos
             z_com = (np.sum(mass * xpos, 0) / np.sum(mass))[2]
             done = bool((z_com < self.config.low_z) or (z_com > 2.0))
+            info["done_reason"] = "low_z" if z_com < self.config.low_z else "high_z"
         # Max episode length
         if self.CFG.MAX_EP_LENGTH != 0:
             if self.episode_length >= self.CFG.MAX_EP_LENGTH:
                 done = True
+                info["done_reason"] = "max_ep_len"
         # Acyclic mocap end
         if (self.idx_curr + 1) == self.mocap_data_len and self.config.motion in self.config.acyclical_motions:
             done = True
+            info["done_reason"] = "acyclical_end"
 
         # Post-step
         # ------------------------------------------
@@ -497,5 +526,5 @@ def check_rewards_and_joint_limits(motion, robot):
     plt.show()
 
 if __name__ == "__main__":
-    # loop_motion("getup_faceup", "humanoid3d")
-    check_rewards_and_joint_limits(motion="getup_facedown", robot="humanoid3d")
+    # loop_motion("run", "unitree_g1")
+    check_rewards_and_joint_limits(motion="run", robot="unitree_g1")
