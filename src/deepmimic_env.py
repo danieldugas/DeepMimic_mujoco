@@ -47,7 +47,7 @@ class DPEnvConfig:
         self.ADD_PHASE_OBS = True
 
 class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.9HRS.no_abpos_10xactscale"
+    version = "v0.9HRS.no_abpos_30xactscale"
     CFG = DPEnvConfig()
     def __init__(self, motion=None, load_mocap=True, robot="humanoid3d"):
         self.config = Config(motion=motion, robot=robot)
@@ -219,7 +219,7 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             self.set_state(qpos, qvel)
         else:
             try:
-                self.do_simulation(action * 10., step_times)
+                self.do_simulation(action * 30., step_times)
             except: # With unitree G1, sometimes the simulation diverges. Here, we log to disk and reset
                 full_traceback = traceback.format_exc()
                 # write debug log and traceback to /tmp/ for debugging
