@@ -48,7 +48,7 @@ class DPEnvConfig:
         self.ADD_PHASE_OBS = True
 
 class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.9HRS.no_hands_20xact_mocapscale0.85"
+    version = "v0.9HRS.no_hands_20xact_mocapscale0.85_rplim60"
     CFG = DPEnvConfig()
     def __init__(self, motion=None, load_mocap=True, robot="humanoid3d"):
         self.config = Config(motion=motion, robot=robot)
@@ -280,9 +280,9 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         err_configs = np.sum(np.abs(curr_config - target_config))
         # pitch error (pitch is -1.57 to 1.57)
         w,x,y,z = self.sim.data.qpos[3:7]
-        _, curr_root_pitch, _ = py3dtf.Quaternion(x,y,z,w).to_rpy()
+        curr_root_roll, curr_root_pitch, _ = py3dtf.Quaternion(x,y,z,w).to_rpy()
         w,x,y,z = self.mocap.data_config[self.idx_curr][3:7]
-        _, target_root_pitch, _ = py3dtf.Quaternion(x,y,z,w).to_rpy()
+        target_root_roll, target_root_pitch, _ = py3dtf.Quaternion(x,y,z,w).to_rpy()
         err_pitch = np.abs(curr_root_pitch - target_root_pitch)
         err_configs += err_pitch # adds pitch error to total error
         reward_config = math.exp(-err_configs)
@@ -335,6 +335,15 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             z_com = (np.sum(mass * xpos, 0) / np.sum(mass))[2]
             done = bool((z_com < self.config.low_z) or (z_com > 2.0))
             info["done_reason"] = "low_z" if z_com < self.config.low_z else "high_z"
+        # Run: large pitch or roll deviation (to prevent leaping)
+        if self.config.motion in ["run"] and self.config.robot == "unitree_g1":
+            MAX_ANGLE = np.deg2rad(60.)
+            if np.abs(curr_root_roll - target_root_roll) > MAX_ANGLE:
+                done = True
+                info["done_reason"] = "run roll limit {} {}".format(curr_root_roll, target_root_roll)
+            if np.abs(curr_root_pitch - target_root_pitch) > MAX_ANGLE:
+                done = True
+                info["done_reason"] = "run pitch limit {} {}".format(curr_root_pitch, target_root_pitch)
         # Max episode length
         if self.CFG.MAX_EP_LENGTH != 0:
             if self.episode_length >= self.CFG.MAX_EP_LENGTH:
@@ -481,10 +490,14 @@ def check_rewards_and_joint_limits(motion, robot):
         if done:
             break
         env.render(mode="human")
+        # root rpy
+        w,x,y,z = env.sim.data.qpos[3:7]
+        root_rpy = py3dtf.Quaternion(x,y,z,w).to_rpy()
         # log
         log.append({
             "qpos": env.sim.data.qpos[7:] * 1., "jnt_min": env.model.jnt_range[1:, 0], "jnt_max": env.model.jnt_range[1:, 1], "jnt_name": env.model.joint_names[1:],
             "end_effector_pos": {x: env.sim.data.geom_xpos[env.model.geom_name2id(x)] * 1.0 for x in env.config.endeffector_geom_names},
+            "root_rpy": root_rpy,
             })
     # plot rewards
     # -----------
@@ -523,6 +536,14 @@ def check_rewards_and_joint_limits(motion, robot):
     for dim in range(3):
         axs[dim].set_title("XYZ"[dim])
     plt.legend()
+    # roll pitch yaw
+    plt.figure()
+    rpy = np.array([x["root_rpy"] for x in log])
+    plt.plot(rpy[:, 0], label="roll")
+    plt.plot(rpy[:, 1], label="pitch")
+    plt.plot(rpy[:, 2], label="yaw")
+    plt.legend()
+    plt.title("Root RPY")
     plt.show()
 
 if __name__ == "__main__":

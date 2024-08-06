@@ -61,6 +61,8 @@ def eval_dashboard_rollout(model, eval_env, n, run_name, log_wandb=True):
         ax[1, 0].plot(ep_rew_curve)
         ax[1, 0].plot(rew_curve)
         ax[1, 0].plot(val_curve)
+        if "done_reason" in info:
+            ax[1, 0].set_title(info["done_reason"])
         ax[1, 1].axhline(0, color='black', lw=1)
         obs_range = np.arange(len(obs))
         for di in range(-5, 0):
