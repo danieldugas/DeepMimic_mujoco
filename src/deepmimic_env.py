@@ -48,7 +48,7 @@ class DPEnvConfig:
         self.ADD_PHASE_OBS = True
 
 class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.9HRS.no_hands_20xact"
+    version = "v0.9HRS.no_hands_20xact_mocapscale0.85"
     CFG = DPEnvConfig()
     def __init__(self, motion=None, load_mocap=True, robot="humanoid3d"):
         self.config = Config(motion=motion, robot=robot)

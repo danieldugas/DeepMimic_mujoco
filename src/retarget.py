@@ -3,7 +3,7 @@ import json
 import os
 
 naive_joint_mapping_humanoid_to_unitree_g1 = {
-    "root": ("floating_base_joint", 0, +1.0),
+    "root": ("floating_base_joint", 0, np.array([0.85, 0.85, 0.85, 1., 1., 1., 1.])), # scale down xyz, because smaller robot needs feet to be at 0 and forward movement is smaller
     "chest_x": None,
     "chest_y": None,
     "chest_z": ("torso_joint", 0, +1.0),
