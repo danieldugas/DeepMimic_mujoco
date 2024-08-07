@@ -547,5 +547,5 @@ def check_rewards_and_joint_limits(motion, robot):
     plt.show()
 
 if __name__ == "__main__":
-    # loop_motion("run", "unitree_g1")
-    check_rewards_and_joint_limits(motion="run", robot="unitree_g1")
+    loop_motion("getup_facedown", "humanoid3d")
+    # check_rewards_and_joint_limits(motion="getup_facedown", robot="humanoid3d")
