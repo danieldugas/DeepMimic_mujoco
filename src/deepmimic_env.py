@@ -305,7 +305,7 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         com_err = np.linalg.norm(target_com - current_com)**2
         reward_com = math.exp(-10 * com_err)
         # Joint limit reward
-        jnt_tol = self.model.jnt_range[1:] * 0.95
+        jnt_tol = self.model.jnt_range[1:] * 0.99
         jnt_pos = self.sim.data.qpos[7:]
         if self.config.robot == "unitree_g1":
             jnt_tol = jnt_tol[(np.array(qpos_idx) - 7)]
@@ -547,5 +547,5 @@ def check_rewards_and_joint_limits(motion, robot):
     plt.show()
 
 if __name__ == "__main__":
-    loop_motion("getup_facedown", "humanoid3d")
-    # check_rewards_and_joint_limits(motion="getup_facedown", robot="humanoid3d")
+    # loop_motion("getup_facedown", "humanoid3d")
+    check_rewards_and_joint_limits(motion="getup_facedown_slow_FSI", robot="unitree_g1")

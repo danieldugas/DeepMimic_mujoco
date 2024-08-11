@@ -5,8 +5,8 @@ class Config(object):
         self.all_motions = ['backflip', 'cartwheel', 'crawl', 'dance_a', 'dance_b', 'getup_facedown'
                     'getup_faceup', 'jump', 'kick', 'punch', 'roll', 'run', 'spin', 'spinkick',
                     'walk']
-        self.acyclical_motions = ['getup_faceup', 'getup_facedown']
-        self.floor_motions = ["getup_faceup", "getup_facedown", "getup_facedown_slow"]
+        self.acyclical_motions = ["getup_faceup", "getup_facedown", "getup_facedown_slow", "getup_facedown_slow_FSI"]
+        self.floor_motions = ["getup_faceup", "getup_facedown", "getup_facedown_slow", "getup_facedown_slow_FSI"]
         self.curr_path = os.path.expanduser("~/Code/DeepMimic_mujoco/src")
         self.motion = 'walk' if motion is None else motion
         self.robot = robot
