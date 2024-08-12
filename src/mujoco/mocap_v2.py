@@ -21,6 +21,11 @@ class MocapDM(object):
         self.data_body_xpos = None
         self.data_geom_xpos = None
 
+    def get_length(self):
+        if self.data_config is None:
+            return 0
+        return len(self.data_config)
+
     def load_mocap(self, filepath):
         self.read_raw_data(filepath)
 
