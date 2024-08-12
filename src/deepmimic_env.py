@@ -2,25 +2,18 @@
 import numpy as np
 import math
 import random
-from os import getcwd
 import json
 import traceback
 import time
 
 from mujoco.mocap_v2 import MocapDM
-from mujoco.mujoco_interface import MujocoInterface
-from mujoco.mocap_util import JOINT_WEIGHT
-from mujoco_py import load_model_from_xml, MjSim, MjViewer
 
 from gym.envs.mujoco import mujoco_env
 from gym import utils
 from gym.spaces import Box
 
 from config import Config
-from pyquaternion import Quaternion
 import py3dtf
-
-from transformations import quaternion_from_euler
 
 BODY_JOINTS = ["chest", "neck", "right_shoulder", "right_elbow", 
             "left_shoulder", "left_elbow", "right_hip", "right_knee", 
@@ -100,16 +93,19 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
     """
     def __init__(self):
         self.robot = "unitree_g1"
-        # variables
-        # motion-state
-        # motion-frame
+
+        # motions
+        self.mocap = MocapDM(robot=self.robot)
+        self.mocap.load_mocap(self.motion_config.mocap_path)
 
         # episode variables
         self.episode_reward = 0
         self.episode_length = 0
         self.episode_debug_log = {}
+        # motion-state
+        # motion-frame
 
-        mujoco_env.MujocoEnv.__init__(self, xml_file_path, 6)
+        mujoco_env.MujocoEnv.__init__(self, self.motion_config.xml_path, 6)
         utils.EzPickle.__init__(self)
 
         # action space: remove last 14 dims (hand actions)
@@ -228,22 +224,7 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
     def __init__(self, motion=None, load_mocap=True, robot="humanoid3d"):
         self.motion_config = Config(motion=motion, robot=robot)
         xml_file_path = self.motion_config.xml_path
-
-        self.weight_pose = 0.5
-        self.weight_vel = 0.05
-        self.weight_root = 0.2
-        self.weight_end_eff = 0.15
-        self.weight_com = 0.1
-
-        self.scale_pose = 2.0
-        self.scale_vel = 0.1
-        self.scale_end_eff = 40.0
-        self.scale_root = 5.0
-        self.scale_com = 10.0
-        self.scale_err = 1.0
-
         self.mocap = MocapDM(robot=robot)
-        self.interface = MujocoInterface()
         if load_mocap:
             self.load_mocap(self.motion_config.mocap_path)
             self.reference_state_init()
@@ -395,7 +376,7 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         assert len(mujoco_action) == self.sim.data.ctrl.shape[0]
 
         # pos_before = mass_center(self.model, self.sim)
-        if force_state is not None:
+        if force_state is not None: # bypass kinematics and dynamics, and directly set pose (used for testing)
             qpos, qvel = force_state
             self.set_state(qpos, qvel)
         else:

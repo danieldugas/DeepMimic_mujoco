@@ -1,1 +1,0 @@
-mpirun --allow-run-as-root -np 8 python3 trpo.py

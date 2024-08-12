@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-import os
 import json
-import math
-import copy
 import numpy as np
 from os import getcwd
 from pyquaternion import Quaternion
