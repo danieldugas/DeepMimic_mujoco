@@ -4,18 +4,20 @@ pip install mujoco-py stable-baselines3 "cython<3" gym==0.15.4 pyquaternion shim
 import os
 import time
 import wandb
+from tqdm import tqdm
 # this stops a strange bug where after hours of training tkinter causes a crash in the workers
 if __name__ == "__main__":
     import matplotlib
     matplotlib.use('Agg')
-
-from deepmimic_env import DPEnv
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecVideoRecorder
 from stable_baselines3.ppo import MlpPolicy
 
 from stable_baselines3.common.callbacks import BaseCallback
+
+from deepmimic_env import DPEnv
+from combined_env import DPCombinedEnv
 
 
 def eval_dashboard_rollout(model, eval_env, n, run_name, log_wandb=True):
@@ -28,7 +30,9 @@ def eval_dashboard_rollout(model, eval_env, n, run_name, log_wandb=True):
     ep_rew = 0
     fig_paths = []
     fig_dir_name = os.path.expanduser("/tmp/sb3_eval_" + str(n) + "_" + run_name)
+    progress_bar = tqdm(desc="Eval")
     while True:
+        progress_bar.update(1)
         try:
             with th.no_grad():
                 action, _states = model.predict(obs, deterministic=True)
@@ -165,6 +169,7 @@ def parse_reason(required=True):
 if __name__ == "__main__":
     DBG_NO_WANDB = False
     reason = parse_reason(required=not DBG_NO_WANDB)
+    env_name = "dp_combined_env"
     motion = "run"
     task = ""
     robot = "unitree_g1"
@@ -189,7 +194,7 @@ if __name__ == "__main__":
         "run_reason": reason,
         "policy_type": "MlpPolicy",
         "total_timesteps": TOT,
-        "env_name": "deep_mimic_mujoco",
+        "env_name": env_name,
         "motion": motion,
         "task": task,
         "robot": robot,
@@ -213,8 +218,12 @@ if __name__ == "__main__":
             monitor_gym=True,  # auto-upload the videos of agents playing the game
             save_code=True,  # optional
         )
-    eval_env = DPEnv(motion=motion, robot=robot)
-    envs = SubprocVecEnv([lambda: DPEnv(motion=motion, robot=robot) for i in range(N_AG)])
+    if env_name == "deep_mimic_mujoco":
+        eval_env = DPEnv(motion=motion, robot=robot)
+        envs = SubprocVecEnv([lambda: DPEnv(motion=motion, robot=robot) for i in range(N_AG)])
+    elif env_name == "dp_combined_env":
+        eval_env = DPCombinedEnv()
+        envs = SubprocVecEnv([lambda: DPCombinedEnv() for i in range(N_AG)])
     model = PPO(MlpPolicy, envs, policy_kwargs=policy_kwargs, verbose=1,
                     tensorboard_log=os.path.expanduser("~/tensorboard/"),
                     n_steps=HRZ, learning_rate=LR, n_epochs=EPOCHS, batch_size=minibatch_size)

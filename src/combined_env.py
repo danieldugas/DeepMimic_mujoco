@@ -60,45 +60,38 @@ class PARun(PlayerAction):
 
 # MotionTransitions are like mocap data, but the target motion is just a constant fixed pose (the target pose)
 class MotionTransition:
+    def __init__(self):
+        self.length = None
+        self.target_mocap = None
+        raise NotImplementedError
     def get_qpos(self, index):
-        raise NotImplementedError
+        return self.target_mocap.get_qpos(1)
     def get_qvel(self, index):
-        raise NotImplementedError
-    def length(self):
-        raise NotImplementedError
+        return self.target_mocap.get_qvel(1)
+    def get_body_xpos(self, index):
+        return self.target_mocap.get_body_xpos(1)
+    def get_geom_xpos(self, index):
+        return self.target_mocap.get_geom_xpos(1)
+    def get_length(self):
+        return self.length
 
 class MTToWalk(MotionTransition):
     def __init__(self, walk_mocap):
-        self.walk_mocap = walk_mocap
+        self.target_mocap = walk_mocap
         self.motion_name = "to_walk"
-    def get_qpos(self, index):
-        return self.walk_mocap.get_qpos(1)
-    def get_qvel(self, index):
-        return self.walk_mocap.get_qvel(1)
-    def length(self):
-        return 120 # about 2 seconds
+        self.length = 120
 
 class MTToRun(MotionTransition):
     def __init__(self, run_mocap):
-        self.run_mocap = run_mocap
+        self.target_mocap = run_mocap
         self.motion_name = "to_run"
-    def get_qpos(self, index):
-        return self.run_mocap.get_qpos(1)
-    def get_qvel(self, index):
-        return self.run_mocap.get_qvel(1)
-    def length(self):
-        return 120 # about 2 seconds
+        self.length = 120
 
 class MTToGetup(MotionTransition):
     def __init__(self, getup_mocap):
-        self.getup_mocap = getup_mocap
+        self.target_mocap = getup_mocap
         self.motion_name = "to_getup"
-    def get_qpos(self, index):
-        return self.getup_mocap.get_qpos(1)
-    def get_qvel(self, index):
-        return self.getup_mocap.get_qvel(1)
-    def length(self):
-        return 120 # about 2 seconds
+        self.length = 120
 
 
 class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
@@ -446,7 +439,7 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 
     def viewer_setup(self):
         """ overrides MujocoEnv.viewer_setup """
-        self.viewer.cam.trackbodyid = 1
+        self.viewer.cam.trackbodyid = 1 # doesn't work
         self.viewer.cam.distance = self.model.stat.extent * 0.3
         self.viewer.cam.elevation = -20
         self.viewer.cam.lookat[2] = 0.6
@@ -454,9 +447,10 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 
     def render(self, mode=None): # needed by video rec
         output = mujoco_env.MujocoEnv.render(self, mode=mode)
+        self.viewer.cam.lookat[0] = self.sim.data.qpos[0] # works for camera tracking
         if mode == "rgb_array":
             # add reward to the screen
-            string = "{} {:>5} {:>7.2f}".format(self.current_motion_mocap.motion_name[:6], self.episode_length, self.episode_reward)
+            string = "{} {:>5} {:>7.2f}".format(self.current_motion_mocap.motion_name[-8:], self.episode_length, self.episode_reward)
             # using opencv put_text:
             import cv2
             font = cv2.FONT_HERSHEY_SIMPLEX
