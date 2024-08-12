@@ -4,14 +4,14 @@ class RobotConfig:
     def __init__(self, robot="humanoid3d"):
         self.robot = robot
         if self.robot == "humanoid3d":
-            self.torso_body_name = "chest"
+            self.torso_body_name = "chest" # x is forward
             self.lfoot_geom_name = "left_ankle"
             self.rfoot_geom_name = "right_ankle"
             self.floor_geom_name = "floor"
             self.endeffector_geom_names = ["left_ankle", "right_ankle", "left_wrist", "right_wrist"]
             self.low_z = 0.7
         elif self.robot == "unitree_g1":
-            self.torso_body_name = "pelvis"
+            self.torso_body_name = "pelvis" # x is forward
             self.lfoot_geom_name = "left_foot"
             self.rfoot_geom_name = "right_foot"
             self.floor_geom_name = "floor"
@@ -19,6 +19,10 @@ class RobotConfig:
             self.low_z = 0.4
         else:
             raise Exception("Unknown robot: %s"%(self.robot))
+        self.env_name = "deepmimic_" + self.robot
+        self.curr_path = os.path.expanduser("~/Code/DeepMimic_mujoco/src")
+        self.xml_folder = '/mujoco/humanoid_deepmimic/envs/asset'
+        self.xml_path = "%s%s/%s.xml"%(self.curr_path, self.xml_folder, self.env_name)
 
 # MotionConfig
 class MotionConfig(object):

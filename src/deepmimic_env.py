@@ -30,7 +30,7 @@ def mass_center(model, sim):
     return (np.sum(mass * xpos, 0) / np.sum(mass))[0]
 
 # Common observation functions
-def get_obs(mjdata, mjmodel, idx_curr, motion_len, ENV_CFG, robot_config):
+def get_obs(mjdata, mjmodel, idx_curr, motion_len, player_action, ENV_CFG, robot_config):
     position = mjdata.qpos.flat.copy()[7:] # ignore root joint
     velocity = mjdata.qvel.flat.copy()[6:] # ignore root joint
     S = ENV_CFG.VEL_OBS_SCALE
@@ -40,7 +40,8 @@ def get_obs(mjdata, mjmodel, idx_curr, motion_len, ENV_CFG, robot_config):
     joint_force = get_joint_force_obs(mjdata, mjmodel, ENV_CFG, robot_config)
     abs_pos = get_abspos_obs(mjdata, mjmodel, ENV_CFG, robot_config)
     phase_obs  = get_phase_obs(idx_curr, motion_len, ENV_CFG, robot_config)
-    return np.concatenate((position, velocity, torso, foot_contact, joint_force, abs_pos, phase_obs))
+    player_action_obs = get_player_action_obs(mjdata, mjmodel, player_action, ENV_CFG, robot_config)
+    return np.concatenate((position, velocity, torso, foot_contact, joint_force, abs_pos, phase_obs, player_action_obs))
 
 def get_torso_obs(mjdata, mjmodel, ENV_CFG, robot_config):
     if not ENV_CFG.ADD_TORSO_OBS:
@@ -124,6 +125,99 @@ def get_phase_obs(idx_curr, motion_len, ENV_CFG, robot_config):
     phase_01 = np.clip(1.0 * idx_curr / motion_len, 0., 1.)
     return [phase_01]
 
+def get_player_action_obs(mjdata, mjmodel, player_action, ENV_CFG, robot_config):
+    if not ENV_CFG.ADD_PLAYER_ACTION_OBS:
+        return []
+    # onehot action vector
+    if player_action is None:
+        oh = np.zeros(ENV_CFG.MAX_PLAYER_ACTIONS)
+        heading_in_world = np.zeros(3)
+    else:
+        oh = player_action.onehot(ENV_CFG.MAX_PLAYER_ACTIONS)
+        heading_in_world = player_action.heading_in_world()
+    # heading in pelvis frame (but aligned to floor)
+    # root_quat = mjdata.qpos[3:7] # usually pelvis orientation 
+    b = mjmodel.body_name2id(robot_config.torso_body_name) # more robust if xml changes
+    root_quat = np.array(mjdata.body_xquat[b])
+    qw, qx, qy, qz = root_quat
+    root_x_axis = py3dtf.Transform(origin=[0,0,0], quaternion=py3dtf.Quaternion(qx, qy, qz, qw)).x_axis()
+    horizonaligned_root_x_axis = np.array([root_x_axis[0], root_x_axis[1], 0])
+    norm = np.linalg.norm(horizonaligned_root_x_axis)
+    if np.allclose(norm, 0): # if root_x_axis is vertical, it anyways doesn't matter
+        heading_vector_in_flooraligned_root_x = np.array([0, 0])
+    else:
+        horizonaligned_root_x_axis /= norm
+        horizonaligned_y_axis = np.array([-horizonaligned_root_x_axis[1], horizonaligned_root_x_axis[0], 0])
+        horizonaligned_root_rot_in_world = py3dtf.Transform(origin=[0,0,0], x_axis=horizonaligned_root_x_axis, y_axis=horizonaligned_y_axis)
+        assert horizonaligned_root_rot_in_world.z_axis()[2] > 0 # z should be up
+        heading_vector_in_flooraligned_root_x = horizonaligned_root_rot_in_world.inverse().transform_vector(heading_in_world)[:2]
+    return np.concatenate((heading_vector_in_flooraligned_root_x, oh))
+
+def calc_imitation_reward(wp, wv, we, wc, wj, mjdata, mjmodel, mocap, mocap_step_idx, ENV_CFG, robot_config, info):
+    if mocap is None:
+        return 0.0, [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    mass = np.expand_dims(mjmodel.body_mass, 1)
+    # ------------------------------------------
+    # Joint Reward
+    err_configs = 0.0
+    target_config = mocap.get_qpos(mocap_step_idx)[7:] # to exclude root joint
+    curr_config = mjdata.qpos[7:] # to exclude root joint
+    target_qvel = mocap.get_qvel(mocap_step_idx)[6:] # to exclude root joint
+    current_qvel = mjdata.qvel[6:] # to exclude root joint
+    if robot_config.robot == "unitree_g1":
+        # [mjmodel.get_joint_qpos_addr(n) for n in mjmodel.joint_names]
+        qpos_idx = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,   32, 33, 34, 35, 36   ] # exclude root and hand joints
+        qvel_idx = [6, 7, 8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,   31, 32, 33, 34, 35   ]
+        target_config = mocap.get_qpos(mocap_step_idx)[qpos_idx] # to exclude root joint
+        curr_config = mjdata.qpos[qpos_idx] # to exclude root joint
+        target_qvel = mocap.get_qvel(mocap_step_idx)[qvel_idx] # to exclude root joint
+        current_qvel = mjdata.qvel[qvel_idx] # to exclude root joint
+    assert len(curr_config) == len(target_config)
+    config_angle_diffs = np.abs(curr_config - target_config) # in radians, for each relevant joint
+    err_configs = np.sum(config_angle_diffs)
+    # pitch error (pitch is -1.57 to 1.57)
+    w,x,y,z = mjdata.qpos[3:7]
+    curr_root_roll, curr_root_pitch, _ = py3dtf.Quaternion(x,y,z,w).to_rpy()
+    w,x,y,z = mocap.get_qpos(mocap_step_idx)[3:7]
+    target_root_roll, target_root_pitch, _ = py3dtf.Quaternion(x,y,z,w).to_rpy()
+    err_pitch = np.abs(curr_root_pitch - target_root_pitch)
+    err_configs += err_pitch # adds pitch error to total error
+    reward_config = math.exp(-err_configs)
+    # QVel Reward
+    assert len(target_qvel) == len(current_qvel)
+    err_qvel = np.sum(np.abs(target_qvel - current_qvel))
+    reward_qvel = math.exp(-0.1 * err_qvel)
+    # End effector reward
+    end_effectors = robot_config.endeffector_geom_names
+    err_end_eff = 0.0
+    for end_effector in end_effectors:
+        idx = mjmodel.geom_name2id(end_effector)
+        err_end_eff += np.linalg.norm(mjdata.geom_xpos[idx] - mocap.get_geom_xpos(mocap_step_idx)[idx])**2
+    reward_end_eff = math.exp(-40 * err_end_eff)
+    # C.O.M reward
+    target_body_xpos = mocap.get_body_xpos(mocap_step_idx)
+    current_body_xpos = mjdata.body_xpos
+    target_com = np.sum(target_body_xpos * mass, 0) / np.sum(mass)
+    current_com = np.sum(current_body_xpos * mass, 0) / np.sum(mass)
+    com_err = np.linalg.norm(target_com - current_com)**2
+    reward_com = math.exp(-10 * com_err)
+    # Joint limit reward
+    jnt_tol = mjmodel.jnt_range[1:] * 0.99
+    jnt_pos = mjdata.qpos[7:]
+    if robot_config.robot == "unitree_g1":
+        jnt_tol = jnt_tol[(np.array(qpos_idx) - 7)]
+        jnt_pos = jnt_pos[(np.array(qpos_idx) - 7)]
+    qlim_err = np.sum((jnt_pos <= jnt_tol[:,0]) + (jnt_pos >= jnt_tol[:, 1])) / len(jnt_pos) # 0-1
+    # Sum reward
+    reward = wp * reward_config + wv * reward_qvel + we * reward_end_eff + wc * reward_com + wj * qlim_err
+
+    info["reward_config"] = reward_config
+    info["reward_qvel"] = reward_qvel
+    info["reward_end_eff"] = reward_end_eff
+    info["reward_com"] = reward_com
+    info["reward_joint_limit"] = qlim_err
+    return reward, [mass, curr_root_roll, target_root_roll, curr_root_pitch, target_root_pitch, config_angle_diffs]
+
 class DPEnvConfig:
     def __init__(self):
         self.MAX_EP_LENGTH = 1000
@@ -134,23 +228,12 @@ class DPEnvConfig:
         self.ADD_JOINT_FORCE_OBS = False
         self.ADD_ABSPOS_OBS = False
         self.ADD_PHASE_OBS = True
-
-
-class DPEnvConfig:
-    def __init__(self):
-        self.MAX_EP_LENGTH = 1000
-        self.VEL_OBS_SCALE = 0.1
-        self.FRC_OBS_SCALE = 0.001
-        self.ADD_FOOT_CONTACT_OBS = True
-        self.ADD_TORSO_OBS = True
-        self.ADD_JOINT_FORCE_OBS = False
-        self.ADD_ABSPOS_OBS = False
-        self.ADD_PHASE_OBS = True
-
+        self.ADD_PLAYER_ACTION_OBS = False
+        self.MAX_PLAYER_ACTIONS = 3
 
 
 class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.9HRS.no_hands_20xact_mocapscale0.85_rplim60"
+    version = "v1.0"
     ENV_CFG = DPEnvConfig()
     def __init__(self, motion=None, load_mocap=True, robot="humanoid3d"):
         self.motion_config = MotionConfig(motion=motion, robot=robot)
@@ -185,7 +268,7 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             self.action_space = Box(low=self.action_space.low[:N], high=self.action_space.high[:N])
 
     def _get_obs(self):
-        return get_obs(self.sim.data, self.model, self.idx_curr, self.mocap_data_len, self.ENV_CFG, self.robot_config)
+        return get_obs(self.sim.data, self.model, self.idx_curr, self.mocap_data_len, None, self.ENV_CFG, self.robot_config)
 
     def reference_state_init(self, idx_init=None):
         self.idx_init = random.randint(0, self.mocap_data_len-1)
@@ -212,6 +295,7 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 
 
     def step(self, action, force_state=None):
+        info = dict()
         # self.step_len = int(self.mocap_dt // self.model.opt.timestep)
         self.step_len = 1
         # step_times = int(self.mocap_dt // self.model.opt.timestep)
@@ -256,74 +340,18 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             return observation, 0, False, {}
 
         # Reward
-        mass = np.expand_dims(self.model.body_mass, 1)
-        # ------------------------------------------
-        # Joint Reward
-        err_configs = 0.0
-        target_config = self.mocap.data_config[self.idx_curr][7:] # to exclude root joint
-        curr_config = self.sim.data.qpos[7:] # to exclude root joint
-        target_qvel = self.mocap.data_vel[self.idx_curr][6:] # to exclude root joint
-        current_qvel = self.sim.data.qvel[6:] # to exclude root joint
-        if self.robot_config.robot == "unitree_g1":
-            # [self.model.get_joint_qpos_addr(n) for n in self.model.joint_names]
-            qpos_idx = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,   32, 33, 34, 35, 36   ] # exclude root and hand joints
-            qvel_idx = [6, 7, 8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,   31, 32, 33, 34, 35   ]
-            target_config = self.mocap.data_config[self.idx_curr][qpos_idx] # to exclude root joint
-            curr_config = self.sim.data.qpos[qpos_idx] # to exclude root joint
-            target_qvel = self.mocap.data_vel[self.idx_curr][qvel_idx] # to exclude root joint
-            current_qvel = self.sim.data.qvel[qvel_idx] # to exclude root joint
-        assert len(curr_config) == len(target_config)
-        self.curr_frame = target_config
-        err_configs = np.sum(np.abs(curr_config - target_config))
-        # pitch error (pitch is -1.57 to 1.57)
-        w,x,y,z = self.sim.data.qpos[3:7]
-        curr_root_roll, curr_root_pitch, _ = py3dtf.Quaternion(x,y,z,w).to_rpy()
-        w,x,y,z = self.mocap.data_config[self.idx_curr][3:7]
-        target_root_roll, target_root_pitch, _ = py3dtf.Quaternion(x,y,z,w).to_rpy()
-        err_pitch = np.abs(curr_root_pitch - target_root_pitch)
-        err_configs += err_pitch # adds pitch error to total error
-        reward_config = math.exp(-err_configs)
-        # QVel Reward
-        assert len(target_qvel) == len(current_qvel)
-        err_qvel = np.sum(np.abs(target_qvel - current_qvel))
-        reward_qvel = math.exp(-0.1 * err_qvel)
-        # End effector reward
-        end_effectors = self.robot_config.endeffector_geom_names
-        err_end_eff = 0.0
-        for end_effector in end_effectors:
-            idx = self.sim.model.geom_name2id(end_effector)
-            err_end_eff += np.linalg.norm(self.sim.data.geom_xpos[idx] - self.mocap.data_geom_xpos[self.idx_curr][idx])**2
-        reward_end_eff = math.exp(-40 * err_end_eff)
-        # C.O.M reward
-        target_body_xpos = self.mocap.data_body_xpos[self.idx_curr]
-        current_body_xpos = self.sim.data.body_xpos
-        target_com = np.sum(target_body_xpos * mass, 0) / np.sum(mass)
-        current_com = np.sum(current_body_xpos * mass, 0) / np.sum(mass)
-        com_err = np.linalg.norm(target_com - current_com)**2
-        reward_com = math.exp(-10 * com_err)
-        # Joint limit reward
-        jnt_tol = self.model.jnt_range[1:] * 0.99
-        jnt_pos = self.sim.data.qpos[7:]
-        if self.robot_config.robot == "unitree_g1":
-            jnt_tol = jnt_tol[(np.array(qpos_idx) - 7)]
-            jnt_pos = jnt_pos[(np.array(qpos_idx) - 7)]
-        qlim_err = np.sum((jnt_pos <= jnt_tol[:,0]) + (jnt_pos >= jnt_tol[:, 1])) / len(jnt_pos) # 0-1
-        # Sum reward
         wp = 0.75
         wv = 0.1
         we = 0.15
         wc = 0.0
         wj = -0.1
-        reward = wp * reward_config + wv * reward_qvel + we * reward_end_eff + wc * reward_com + wj * qlim_err
-
-        info = dict()
-        info["reward_config"] = reward_config
-        info["reward_qvel"] = reward_qvel
-        info["reward_end_eff"] = reward_end_eff
-        info["reward_com"] = reward_com
-        info["reward_joint_limit"] = qlim_err
+        reward, intermediate_values = calc_imitation_reward(
+            wp, wv, we, wc, wj,
+            self.sim.data, self.model, self.mocap, self.idx_curr, self.ENV_CFG, self.robot_config, info
+        )
 
         # Termination
+        mass, curr_root_roll, target_root_roll, curr_root_pitch, target_root_pitch, config_angle_diffs = intermediate_values
         # -------------------------------
         done = False
         # Low / high C.O.M termination
@@ -554,4 +582,4 @@ def check_rewards_and_joint_limits(motion, robot):
 
 if __name__ == "__main__":
     # loop_motion("getup_facedown", "humanoid3d")
-    check_rewards_and_joint_limits(motion="walk", robot="unitree_g1")
+    check_rewards_and_joint_limits(motion="run", robot="humanoid3d")

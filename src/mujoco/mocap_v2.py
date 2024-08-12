@@ -5,6 +5,7 @@ from os import getcwd
 from pyquaternion import Quaternion
 from mujoco.mocap_util import align_position, align_rotation
 from mujoco.mocap_util import BODY_JOINTS, BODY_JOINTS_IN_DP_ORDER, DOF_DEF, BODY_DEFS
+import os
 
 from transformations import euler_from_quaternion, quaternion_from_euler
 
@@ -29,7 +30,7 @@ class MocapDM(object):
     def load_mocap(self, filepath):
         self.read_raw_data(filepath)
 
-    def read_raw_data(self, filepath):
+    def read_raw_data(self, filepath, FIX_SINGULARITY_MODE="continuity", DEBUG_PLOT_FIX_SINGULARITY=False):
         motions = None
         self.loop = None
         all_states = []
@@ -45,6 +46,7 @@ class MocapDM(object):
         except:
             print("Warning: No loop information found in mocap file")
         self.dt = motions[0][0]
+        self.motion_name = os.path.splitext(os.path.basename(filepath))[0]
 
         if "Format" not in data:
             m_shape = np.shape(motions)
@@ -138,8 +140,7 @@ class MocapDM(object):
                         quat_wxyz = state[each_joint]
                         quat = np.array([quat_wxyz[1], quat_wxyz[2], quat_wxyz[3], quat_wxyz[0]]) # xyzw
                         euler_tuple = euler_from_quaternion(quat, axes='rxyz')
-                        FIX_SINGULARITY_MODE = "continuity" # "continuity" or "limits" or "none"
-                        if True:
+                        if FIX_SINGULARITY_MODE is not None:
                             # FIX SINGULARITY
                             # in some mocap, the euler angles obtained from quaternions are not smooth, and sometimes exceed joint limits
                             # this is due to instability/singularity around the pitch = -90 degrees point
@@ -219,6 +220,8 @@ class MocapDM(object):
                                                             exn = exc
                                                             eyn = eyc
                                                             ezn = ezc
+                                    else:
+                                        raise Exception("Invalid FIX_SINGULARITY_MODE {}".format(FIX_SINGULARITY_MODE))
                                     euler_tuple = (exn, eyn, ezn)
                                 self.singularity_quat_error.setdefault(each_joint + "_x", []).append(best_error)
                                 self.singularity_quat_error.setdefault(each_joint + "_y", []).append(best_error)
@@ -247,7 +250,7 @@ class MocapDM(object):
                 # self.data_vel.append(np.array(tmp_vel))
                 self.data_config.append(np.array(tmp_angle))
 
-            if False:
+            if DEBUG_PLOT_FIX_SINGULARITY:
                 # check singularity fix
                 from matplotlib import pyplot as plt
                 fig, axs = plt.subplots(len(BALL_JOINTS), 3, figsize=(10, 10))
@@ -332,6 +335,17 @@ class MocapDM(object):
             self.data_body_xpos = new_data_body_xpos
             self.data_geom_xpos = new_data_geom_xpos
 
+    def get_qpos(self, idx):
+        return self.data_config[idx]
+
+    def get_qvel(self, idx):
+        return self.data_vel[idx]
+
+    def get_geom_xpos(self, idx):
+        return self.data_geom_xpos[idx]
+
+    def get_body_xpos(self, idx):
+        return self.data_body_xpos[idx]
 
     def calc_rot_vel(self, seg_0, seg_1, dura):
         q_0 = Quaternion(seg_0[0], seg_0[1], seg_0[2], seg_0[3])
