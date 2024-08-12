@@ -47,12 +47,187 @@ class DPEnvConfig:
         self.ADD_ABSPOS_OBS = False
         self.ADD_PHASE_OBS = True
 
+class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
+    """ 
+
+    motions:
+    ----
+
+    walk
+    run
+    action
+    getup
+
+    motion states:
+    ----
+
+    walk     run  <---timer-end|trigger--->    action
+      ^      ^    
+    upright detected (high c.o.m + pitch detected / close to first walk frame)
+      |   /
+    fall detected (low c.o.m + pitch detected / head or hand + floor collision)
+      v   
+    getup      
+
+    control inputs:
+    ----
+
+    onehot
+    [
+    walk,
+    run,
+    action,
+    vx, # target x vel in body frame
+    vy, # target y vel in body frame
+    ]
+
+    rewards:
+    ----
+    motion reward + task reward
+
+    walk: vel matching
+    run: vel matching
+
+    termination:
+    ----
+    too long spent in getup
+
+    schedule:
+    ----
+    (optional) start with getup until first getup success
+    initialize in random motion-state, random mocap frame
+
+    """
+    def __init__(self):
+        self.robot = "unitree_g1"
+        # variables
+        # motion-state
+        # motion-frame
+
+        # episode variables
+        self.episode_reward = 0
+        self.episode_length = 0
+        self.episode_debug_log = {}
+
+        mujoco_env.MujocoEnv.__init__(self, xml_file_path, 6)
+        utils.EzPickle.__init__(self)
+
+        # action space: remove last 14 dims (hand actions)
+        if self.robot == "unitree_g1":
+            N = self.action_space.shape[0] - 14
+            self.action_space = Box(low=self.action_space.low[:N], high=self.action_space.high[:N])
+
+        pass
+
+    def step(self, action, force_state=None):
+
+        pass
+
+
+# Common observation functions
+def get_obs(mjdata, mjmodel, idx_curr, motion_len, ENV_CFG, motion_config):
+    position = mjdata.qpos.flat.copy()[7:] # ignore root joint
+    velocity = mjdata.qvel.flat.copy()[6:] # ignore root joint
+    S = ENV_CFG.VEL_OBS_SCALE
+    velocity = np.array(velocity) * S
+    torso = get_torso_obs(mjdata, mjmodel, ENV_CFG, motion_config)
+    foot_contact = get_foot_contact_obs(mjdata, mjmodel, ENV_CFG, motion_config)
+    joint_force = get_joint_force_obs(mjdata, mjmodel, ENV_CFG, motion_config)
+    abs_pos = get_abspos_obs(mjdata, mjmodel, ENV_CFG, motion_config)
+    phase_obs  = get_phase_obs(idx_curr, motion_len, ENV_CFG, motion_config)
+    return np.concatenate((position, velocity, torso, foot_contact, joint_force, abs_pos, phase_obs))
+
+def get_torso_obs(mjdata, mjmodel, ENV_CFG, motion_config):
+    if not ENV_CFG.ADD_TORSO_OBS:
+        return []
+    b = mjmodel.body_name2id(motion_config.torso_body_name)
+    torso_xyz = np.array(mjdata.body_xpos[b])
+    torso_wxyz = np.array(mjdata.body_xquat[b])
+    torso_vel = np.array(mjdata.cvel[b][3:])
+    vr1, vr2, vr3 = np.array(mjdata.cvel[b][:3])
+    w, x, y, z = torso_wxyz
+    r, p, y = py3dtf.Quaternion(x, y, z, w).to_rpy()
+    torso_rpy = np.array([r, p, y])
+    BDY = np.array([ # BDYVEC frame: frame where x points forward from chest, horizontal to ground
+        [np.cos(-torso_rpy[2]), -np.sin(-torso_rpy[2]), 0],
+        [np.sin(-torso_rpy[2]),  np.cos(-torso_rpy[2]), 0],
+        [0, 0, 1]
+    ])
+    vx = BDY[0][0] * torso_vel[0] + BDY[0][1] * torso_vel[1] + BDY[0][2] * torso_vel[2];
+    vy = BDY[1][0] * torso_vel[0] + BDY[1][1] * torso_vel[1] + BDY[1][2] * torso_vel[2];
+    vz = BDY[2][0] * torso_vel[0] + BDY[2][1] * torso_vel[1] + BDY[2][2] * torso_vel[2];
+    S = ENV_CFG.VEL_OBS_SCALE
+    return np.array([
+        torso_rpy[0] * S,
+        torso_rpy[1] * S,
+        vx * S,
+        vy * S,
+        vz * S,
+        vr1 * S,
+        vr2 * S,
+        vr3 * S,
+    ])
+
+def get_foot_contact_obs(mjdata, mjmodel, ENV_CFG, motion_config):
+    if not ENV_CFG.ADD_FOOT_CONTACT_OBS:
+        return []
+    rfoot_name = motion_config.rfoot_geom_name
+    lfoot_name = motion_config.lfoot_geom_name
+    floor_name = motion_config.floor_geom_name
+    lfoot_floor_contact = 0.
+    rfoot_floor_contact = 0.
+    lfoot_other_contact = 0.
+    rfoot_other_contact = 0.
+    for c in mjdata.contact:
+        name1 = mjmodel.geom_id2name(c.geom1)
+        name2 = mjmodel.geom_id2name(c.geom2)
+        floortouch = name1 == floor_name or name2 == floor_name
+        if (name1 == rfoot_name or name2 == rfoot_name):
+            if floortouch:
+                rfoot_floor_contact = 1.
+            else:
+                rfoot_other_contact = 1.
+        if (name1 == lfoot_name or name2 == lfoot_name):
+            if floortouch:
+                lfoot_floor_contact = 1.
+            else:
+                lfoot_other_contact = 1.
+    return np.array([
+        rfoot_floor_contact,
+        lfoot_floor_contact,
+    ])
+
+def get_joint_force_obs(mjdata, mjmodel, ENV_CFG, motion_config):
+    if not ENV_CFG.ADD_JOINT_FORCE_OBS:
+        return []
+    # https://github.com/google-deepmind/mujoco/issues/1095#issuecomment-1761836433
+    # qfrc_unc was renamed qfrc_smooth in later versions
+    jf = mjdata.qfrc_unc.flat.copy() + mjdata.qfrc_constraint.flat.copy()
+    S = ENV_CFG.FRC_OBS_SCALE
+    jf = np.array(jf) * S
+    return jf
+
+def get_abspos_obs(mjdata, mjmodel, ENV_CFG, motion_config):
+    if not ENV_CFG.ADD_ABSPOS_OBS:
+        return []
+    geom_xpos = np.array(mjdata.geom_xpos).flatten() * 1.0
+    return geom_xpos
+
+def get_phase_obs(idx_curr, motion_len, ENV_CFG, motion_config):
+    if not ENV_CFG.ADD_PHASE_OBS:
+        return []
+    return [1.0 * idx_curr / motion_len]
+
+
+
+
+
 class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
     version = "v0.9HRS.no_hands_20xact_mocapscale0.85_rplim60"
-    CFG = DPEnvConfig()
+    ENV_CFG = DPEnvConfig()
     def __init__(self, motion=None, load_mocap=True, robot="humanoid3d"):
-        self.config = Config(motion=motion, robot=robot)
-        xml_file_path = self.config.xml_path
+        self.motion_config = Config(motion=motion, robot=robot)
+        xml_file_path = self.motion_config.xml_path
 
         self.weight_pose = 0.5
         self.weight_vel = 0.05
@@ -70,7 +245,7 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         self.mocap = MocapDM(robot=robot)
         self.interface = MujocoInterface()
         if load_mocap:
-            self.load_mocap(self.config.mocap_path)
+            self.load_mocap(self.motion_config.mocap_path)
             self.reference_state_init()
             assert len(self.mocap.data_config) != 0
         else:
@@ -92,26 +267,17 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         utils.EzPickle.__init__(self)
 
         # action space: remove last 14 dims (hand actions)
-        if self.config.robot == "unitree_g1":
+        if self.motion_config.robot == "unitree_g1":
             N = self.action_space.shape[0] - 14
             self.action_space = Box(low=self.action_space.low[:N], high=self.action_space.high[:N])
 
     def _get_obs(self):
-        position = self.sim.data.qpos.flat.copy()[7:] # ignore root joint
-        velocity = self.sim.data.qvel.flat.copy()[6:] # ignore root joint
-        S = self.CFG.VEL_OBS_SCALE
-        velocity = np.array(velocity) * S
-        torso = self.get_torso_obs()
-        foot_contact = self.get_foot_contact_obs()
-        joint_force = self.get_joint_force_obs()
-        abs_pos = self.get_abspos_obs()
-        phase_obs  = self.get_phase_obs()
-        return np.concatenate((position, velocity, torso, foot_contact, joint_force, abs_pos, phase_obs))
+        return get_obs(self.sim.data, self.model, self.idx_curr, self.mocap_data_len, self.ENV_CFG, self.motion_config)
 
     def get_torso_obs(self):
-        if not self.CFG.ADD_TORSO_OBS:
+        if not self.ENV_CFG.ADD_TORSO_OBS:
             return []
-        b = self.model.body_name2id(self.config.torso_body_name)
+        b = self.model.body_name2id(self.motion_config.torso_body_name)
         torso_xyz = np.array(self.data.body_xpos[b])
         torso_wxyz = np.array(self.data.body_xquat[b])
         torso_vel = np.array(self.data.cvel[b][3:])
@@ -127,7 +293,7 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         vx = BDY[0][0] * torso_vel[0] + BDY[0][1] * torso_vel[1] + BDY[0][2] * torso_vel[2];
         vy = BDY[1][0] * torso_vel[0] + BDY[1][1] * torso_vel[1] + BDY[1][2] * torso_vel[2];
         vz = BDY[2][0] * torso_vel[0] + BDY[2][1] * torso_vel[1] + BDY[2][2] * torso_vel[2];
-        S = self.CFG.VEL_OBS_SCALE
+        S = self.ENV_CFG.VEL_OBS_SCALE
         return np.array([
             torso_rpy[0] * S,
             torso_rpy[1] * S,
@@ -140,11 +306,11 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         ])
     
     def get_foot_contact_obs(self):
-        if not self.CFG.ADD_FOOT_CONTACT_OBS:
+        if not self.ENV_CFG.ADD_FOOT_CONTACT_OBS:
             return []
-        rfoot_name = self.config.rfoot_geom_name
-        lfoot_name = self.config.lfoot_geom_name
-        floor_name = self.config.floor_geom_name
+        rfoot_name = self.motion_config.rfoot_geom_name
+        lfoot_name = self.motion_config.lfoot_geom_name
+        floor_name = self.motion_config.floor_geom_name
         lfoot_floor_contact = 0.
         rfoot_floor_contact = 0.
         lfoot_other_contact = 0.
@@ -169,22 +335,22 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         ])
 
     def get_joint_force_obs(self):
-        if not self.CFG.ADD_JOINT_FORCE_OBS:
+        if not self.ENV_CFG.ADD_JOINT_FORCE_OBS:
             return []
         # https://github.com/google-deepmind/mujoco/issues/1095#issuecomment-1761836433
         # qfrc_unc was renamed qfrc_smooth in later versions
         jf = self.data.qfrc_unc.flat.copy() + self.data.qfrc_constraint.flat.copy()
-        S = self.CFG.FRC_OBS_SCALE
+        S = self.ENV_CFG.FRC_OBS_SCALE
         jf = np.array(jf) * S
         return jf
 
     def get_phase_obs(self):
-        if not self.CFG.ADD_PHASE_OBS:
+        if not self.ENV_CFG.ADD_PHASE_OBS:
             return []
         return [1.0 * self.idx_curr / self.mocap_data_len]
 
     def get_abspos_obs(self):
-        if not self.CFG.ADD_ABSPOS_OBS:
+        if not self.ENV_CFG.ADD_ABSPOS_OBS:
             return []
         geom_xpos = np.array(self.sim.data.geom_xpos).flatten() * 1.0
         return geom_xpos
@@ -222,7 +388,7 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 
         # action pre-processing
         mujoco_action = action * 1.
-        if self.config.robot == "unitree_g1":
+        if self.motion_config.robot == "unitree_g1":
             mujoco_action = action * 20.
             if len(mujoco_action) == self.sim.data.ctrl.shape[0] - 14: # need to check because mujoco_env init does a step with full action space
                 mujoco_action = np.concatenate((mujoco_action, np.zeros(14))) # add 14 hand actions (0)
@@ -241,8 +407,8 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
                 path = "/tmp/deepmimic_episode_{}.json".format(time.strftime("%Y%m%d-%H%M_%S"))
                 self.episode_debug_log["last_action"] = np.array(action * 1.).tolist()
                 self.episode_debug_log["full_traceback"] = full_traceback
-                self.episode_debug_log["motion"] = self.config.motion
-                self.episode_debug_log["robot"] = self.config.robot
+                self.episode_debug_log["motion"] = self.motion_config.motion
+                self.episode_debug_log["robot"] = self.motion_config.robot
                 with open(path, "w") as f:
                     f.write(json.dumps(self.episode_debug_log, indent=4))
                 print("Error in step, debug log written to {}".format(path))
@@ -267,7 +433,7 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         curr_config = self.sim.data.qpos[7:] # to exclude root joint
         target_qvel = self.mocap.data_vel[self.idx_curr][6:] # to exclude root joint
         current_qvel = self.sim.data.qvel[6:] # to exclude root joint
-        if self.config.robot == "unitree_g1":
+        if self.motion_config.robot == "unitree_g1":
             # [self.model.get_joint_qpos_addr(n) for n in self.model.joint_names]
             qpos_idx = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,   32, 33, 34, 35, 36   ] # exclude root and hand joints
             qvel_idx = [6, 7, 8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,   31, 32, 33, 34, 35   ]
@@ -291,7 +457,7 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         err_qvel = np.sum(np.abs(target_qvel - current_qvel))
         reward_qvel = math.exp(-0.1 * err_qvel)
         # End effector reward
-        end_effectors = self.config.endeffector_geom_names
+        end_effectors = self.motion_config.endeffector_geom_names
         err_end_eff = 0.0
         for end_effector in end_effectors:
             idx = self.sim.model.geom_name2id(end_effector)
@@ -307,7 +473,7 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         # Joint limit reward
         jnt_tol = self.model.jnt_range[1:] * 0.99
         jnt_pos = self.sim.data.qpos[7:]
-        if self.config.robot == "unitree_g1":
+        if self.motion_config.robot == "unitree_g1":
             jnt_tol = jnt_tol[(np.array(qpos_idx) - 7)]
             jnt_pos = jnt_pos[(np.array(qpos_idx) - 7)]
         qlim_err = np.sum((jnt_pos <= jnt_tol[:,0]) + (jnt_pos >= jnt_tol[:, 1])) / len(jnt_pos) # 0-1
@@ -330,13 +496,13 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         # -------------------------------
         done = False
         # Low / high C.O.M termination
-        if self.config.motion not in self.config.floor_motions:
+        if self.motion_config.motion not in self.motion_config.floor_motions:
             xpos = self.sim.data.xipos
             z_com = (np.sum(mass * xpos, 0) / np.sum(mass))[2]
-            done = bool((z_com < self.config.low_z) or (z_com > 2.0))
-            info["done_reason"] = "low_z" if z_com < self.config.low_z else "high_z"
+            done = bool((z_com < self.motion_config.low_z) or (z_com > 2.0))
+            info["done_reason"] = "low_z" if z_com < self.motion_config.low_z else "high_z"
         # Run: large pitch or roll deviation (to prevent leaping)
-        if self.config.motion in ["run"] and self.config.robot == "unitree_g1":
+        if self.motion_config.motion in ["run"] and self.motion_config.robot == "unitree_g1":
             MAX_ANGLE = np.deg2rad(60.)
             if np.abs(curr_root_roll - target_root_roll) > MAX_ANGLE:
                 done = True
@@ -345,12 +511,12 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
                 done = True
                 info["done_reason"] = "run pitch limit {} {}".format(curr_root_pitch, target_root_pitch)
         # Max episode length
-        if self.CFG.MAX_EP_LENGTH != 0:
-            if self.episode_length >= self.CFG.MAX_EP_LENGTH:
+        if self.ENV_CFG.MAX_EP_LENGTH != 0:
+            if self.episode_length >= self.ENV_CFG.MAX_EP_LENGTH:
                 done = True
                 info["done_reason"] = "max_ep_len"
         # Acyclic mocap end
-        if (self.idx_curr + 1) == self.mocap_data_len and self.config.motion in self.config.acyclical_motions:
+        if (self.idx_curr + 1) == self.mocap_data_len and self.motion_config.motion in self.motion_config.acyclical_motions:
             done = True
             info["done_reason"] = "acyclical_end"
 
@@ -375,8 +541,8 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             # write debug log and traceback to /tmp/ for debugging
             path = "/tmp/deepmimic_episode_{}.json".format(time.strftime("%Y%m%d-%H%M_%S"))
             self.episode_debug_log["full_traceback"] = full_traceback
-            self.episode_debug_log["motion"] = self.config.motion
-            self.episode_debug_log["robot"] = self.config.robot
+            self.episode_debug_log["motion"] = self.motion_config.motion
+            self.episode_debug_log["robot"] = self.motion_config.robot
             with open(path, "w") as f:
                 f.write(json.dumps(self.episode_debug_log, indent=4))
             print("Observation out of bounds in step, debug log written to {}".format(path))
@@ -496,7 +662,7 @@ def check_rewards_and_joint_limits(motion, robot):
         # log
         log.append({
             "qpos": env.sim.data.qpos[7:] * 1., "jnt_min": env.model.jnt_range[1:, 0], "jnt_max": env.model.jnt_range[1:, 1], "jnt_name": env.model.joint_names[1:],
-            "end_effector_pos": {x: env.sim.data.geom_xpos[env.model.geom_name2id(x)] * 1.0 for x in env.config.endeffector_geom_names},
+            "end_effector_pos": {x: env.sim.data.geom_xpos[env.model.geom_name2id(x)] * 1.0 for x in env.motion_config.endeffector_geom_names},
             "root_rpy": root_rpy,
             })
     # plot rewards

@@ -194,7 +194,7 @@ if __name__ == "__main__":
         "task": task,
         "robot": robot,
         "version": DPEnv.version,
-        "env_cfg": DPEnv.CFG.__dict__.copy(),
+        "env_cfg": DPEnv.ENV_CFG.__dict__.copy(),
         "arch": policy_kwargs["net_arch"],
         "n_agents": N_AG,
         "horizon": HRZ,
