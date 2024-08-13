@@ -421,7 +421,6 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             # write debug log and traceback to /tmp/ for debugging
             path = "/tmp/deepmimic_episode_{}.json".format(time.strftime("%Y%m%d-%H%M_%S"))
             self.episode_debug_log["full_traceback"] = full_traceback
-            self.episode_debug_log["motion"] = self.motion_config.motion
             self.episode_debug_log["robot"] = self.robot_config.robot
             with open(path, "w") as f:
                 f.write(json.dumps(self.episode_debug_log, indent=4))
