@@ -179,6 +179,7 @@ class EvalDashboardCallbackThreaded(BaseCallback):
                 time.sleep(0.5)
                 continue
             cpmodel, n = self.next_workorder
+            self.next_workorder = None
             eval_env = self.eval_env
             print("Eval worker: starting eval job for global step", n)
             start = time.time()
