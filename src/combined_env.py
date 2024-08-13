@@ -15,6 +15,8 @@ from config import MotionConfig, RobotConfig
 from mujoco.mocap_v2 import MocapDM
 from deepmimic_env import DPEnv, get_obs, calc_imitation_reward
 
+DEBUG = False
+PROFILE = False
 
 class DPCombinedEnvConfig:
     def __init__(self):
@@ -148,6 +150,8 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 
     """
     def __init__(self, verbose=0):
+        # uid: three random number/letters/caps
+        self.uid = "".join([random.choice("!@#$%^*()_+-abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") for _ in range(3)])
         self.verbose = verbose
         self.robot = "unitree_g1"
         self.robot_config = RobotConfig(robot=self.robot)
@@ -212,10 +216,14 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         return observation
 
     def step(self, action, force_state=None):
+        if PROFILE:
+            start_timer = time.time()
         step_times = 1
         info = {}
 
         # action pre-processing
+        if PROFILE:
+            act_timer = time.time()
         mujoco_action = action * 1.
         if self.robot == "unitree_g1":
             mujoco_action = action * 20.
@@ -229,23 +237,34 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             self.set_state(qpos, qvel)
         else:
             try:
+                if PROFILE:
+                    sim_start = time.time()
                 self.do_simulation(mujoco_action, step_times)
+                if PROFILE:
+                    sim_end = time.time()
+                    print(f"{self.uid} Sim step (ms) {sim_start * 1000} -> {sim_end * 1000} = {(sim_end - sim_start) * 1000}") # PROFILE
             except: # With unitree G1, sometimes the simulation diverges. Here, we log to disk and reset
-                full_traceback = traceback.format_exc()
-                # write debug log and traceback to /tmp/ for debugging
-                path = "/tmp/deepmimic_episode_{}.json".format(time.strftime("%Y%m%d-%H%M_%S"))
-                self.episode_debug_log["last_action"] = np.array(action * 1.).tolist()
-                self.episode_debug_log["full_traceback"] = full_traceback
-                self.episode_debug_log["robot"] = self.robot
-                with open(path, "w") as f:
-                    f.write(json.dumps(self.episode_debug_log, indent=4))
-                print("Error in step, debug log written to {}".format(path))
+                if DEBUG:
+                    full_traceback = traceback.format_exc()
+                    # write debug log and traceback to /tmp/ for debugging
+                    path = "/tmp/deepmimic_episode_{}.json".format(time.strftime("%Y%m%d-%H%M_%S"))
+                    self.episode_debug_log["last_action"] = np.array(action * 1.).tolist()
+                    self.episode_debug_log["full_traceback"] = full_traceback
+                    self.episode_debug_log["robot"] = self.robot
+                    with open(path, "w") as f:
+                        f.write(json.dumps(self.episode_debug_log, indent=4))
+                    print("Error in step, debug log written to {}".format(path))
                 done = True
                 return self._get_obs() * 0., 0, done, {}
+        if PROFILE:
+            act_end = time.time()
+            print(f"{self.uid} Act (ms) {act_timer * 1000} -> {act_end * 1000} = {(act_end - act_timer) * 1000}")
 
         # Maybe sample a different player action
         # -----------------------------------------
         # We should use the current PA for this reward, but the next PA for this observation
+        if PROFILE:
+            pa_start = time.time()
         next_player_action = self.current_player_action
         is_player_action_change = False
         AVG_STEPS_TO_PA_CHANGE = 500
@@ -256,14 +275,24 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         if np.random.rand() < (1. / AVG_STEPS_TO_PA_CHANGE): # player input on average every 500 steps
             next_player_action = PARun() if isinstance(self.current_player_action, PAWalk) else PAWalk()
             is_player_action_change = True
+        if PROFILE:
+            pa_end = time.time()
+            print(f"{self.uid} PA sample (ms) {pa_start * 1000} -> {pa_end * 1000} = {(pa_end - pa_start) * 1000}")
 
         # Observation
         # -----------------------------------------
+        if PROFILE:
+            obs_start = time.time()
         observation = self._get_obs() * 1.
+        if PROFILE:
+            obs_end = time.time()
+            print(f"{self.uid} Obs get (ms) {obs_start * 1000} -> {obs_end * 1000} = {(obs_end - obs_start) * 1000}")
 
 
         # Reward
         # -----------------------------------------
+        if PROFILE:
+            rew_start = time.time()
         # imitation reward
         wp = 0.75
         wv = 0.1
@@ -289,6 +318,9 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         wi = 0.7
         wt = 0.3
         reward = imitation_reward * wi + task_reward * wt
+        if PROFILE:
+            rew_end = time.time()
+            print(f"{self.uid} Reward calc (ms) {rew_start * 1000} -> {rew_end * 1000} = {(rew_end - rew_start) * 1000}")
         
         info["imitation_reward"] = imitation_reward
         info["task_reward"] = task_reward
@@ -297,6 +329,8 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 
         # Termination
         # -------------------------------
+        if PROFILE:
+            term_start = time.time()
         done = False
         # Ran out of time
         #   getup   -> done
@@ -327,24 +361,7 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         #   walk    -> to_getup
         #   run     -> to_getup
         if self.current_motion_mocap is not None:
-            mass, curr_root_roll, target_root_roll, curr_root_pitch, target_root_pitch, config_angle_diffs = intermediate_values
             is_out_of_time = self.current_motion_n_steps >= self.current_motion_mocap.get_length()
-            ALIM = np.deg2rad(15)
-            is_pitch_close = np.abs(curr_root_pitch - target_root_pitch) < ALIM
-            is_roll_close = np.abs(curr_root_roll - target_root_roll) < ALIM
-            is_angle_diff_close = np.all(np.abs(config_angle_diffs) < ALIM)
-            is_successful = is_pitch_close and is_roll_close and is_angle_diff_close
-            is_fallen = False
-            if True:
-                xpos = self.sim.data.xipos
-                z_com = (np.sum(mass * xpos, 0) / np.sum(mass))[2]
-                is_fallen = bool((z_com < self.robot_config.low_z) or (z_com > 2.0))
-                # Run: large pitch or roll deviation (to prevent leaping)
-                MAX_ANGLE = np.deg2rad(60.)
-                if np.abs(curr_root_roll - target_root_roll) > MAX_ANGLE:
-                    is_fallen = True
-                if np.abs(curr_root_pitch - target_root_pitch) > MAX_ANGLE:
-                    is_fallen = True
             if is_out_of_time:
                 if self.current_motion_mocap == self.getup_mocap:
                     done = True
@@ -368,6 +385,12 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
                 if self.current_motion_mocap == self.run_mocap:
                     if isinstance(next_player_action, PAWalk):
                         self.change_to_motion(self.to_walk_mocap)
+            ALIM = np.deg2rad(15)
+            mass, curr_root_roll, target_root_roll, curr_root_pitch, target_root_pitch, config_angle_diffs = intermediate_values
+            is_pitch_close = np.abs(curr_root_pitch - target_root_pitch) < ALIM
+            is_roll_close = np.abs(curr_root_roll - target_root_roll) < ALIM
+            is_angle_diff_close = np.all(np.abs(config_angle_diffs) < ALIM)
+            is_successful = is_pitch_close and is_roll_close and is_angle_diff_close
             if is_successful:
                 if self.current_motion_mocap == self.getup_mocap:
                     # only check for the last 20 frames:
@@ -379,6 +402,17 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
                     self.change_to_motion(self.walk_mocap)
                 if self.current_motion_mocap == self.to_run_mocap:
                     self.change_to_motion(self.run_mocap)
+            is_fallen = False
+            if True:
+                xpos = self.sim.data.xipos
+                z_com = (np.sum(mass * xpos, 0) / np.sum(mass))[2]
+                is_fallen = bool((z_com < self.robot_config.low_z) or (z_com > 2.0))
+                # Run: large pitch or roll deviation (to prevent leaping)
+                MAX_ANGLE = np.deg2rad(60.)
+                if np.abs(curr_root_roll - target_root_roll) > MAX_ANGLE:
+                    is_fallen = True
+                if np.abs(curr_root_pitch - target_root_pitch) > MAX_ANGLE:
+                    is_fallen = True
             if is_fallen:
                 if self.current_motion_mocap == self.to_walk_mocap:
                     self.change_to_motion(self.to_getup_mocap)
@@ -393,11 +427,15 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
                 if self.episode_length >= self.ENV_CFG.MAX_EP_LENGTH:
                     done = True
                     info["done_reason"] = "max_ep_len"
+        if PROFILE:
+            term_end = time.time()
+            print(f"{self.uid} Term check (ms) {term_start * 1000} -> {term_end * 1000} = {(term_end - term_start) * 1000}")
             
-        
         
         # Post-step
         # ------------------------------------------
+        if PROFILE:
+            post_start = time.time()
         # set player action
         self.current_player_action = next_player_action
         # increment mocap frame
@@ -409,25 +447,33 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 
 
         # debug log
-        self.episode_debug_log.setdefault("action", []).append(np.array(action * 1.).tolist())
-        self.episode_debug_log.setdefault("body_xpos", []).append(np.array(self.sim.data.body_xpos * 1.).tolist())
-        self.episode_debug_log.setdefault("body_xvelp", []).append(np.array(self.sim.data.body_xvelp * 1.).tolist())
-        self.episode_debug_log.setdefault("qpos", []).append(np.array(self.sim.data.qpos * 1.).tolist())
-        self.episode_debug_log.setdefault("qvel", []).append(np.array(self.sim.data.qvel * 1.).tolist())
-        self.episode_debug_log.setdefault("reward", []).append(reward)
+        if DEBUG:
+            self.episode_debug_log.setdefault("action", []).append(np.array(action * 1.).tolist())
+            self.episode_debug_log.setdefault("body_xpos", []).append(np.array(self.sim.data.body_xpos * 1.).tolist())
+            self.episode_debug_log.setdefault("body_xvelp", []).append(np.array(self.sim.data.body_xvelp * 1.).tolist())
+            self.episode_debug_log.setdefault("qpos", []).append(np.array(self.sim.data.qpos * 1.).tolist())
+            self.episode_debug_log.setdefault("qvel", []).append(np.array(self.sim.data.qvel * 1.).tolist())
+            self.episode_debug_log.setdefault("reward", []).append(reward)
 
         if np.max(observation) > 100.0 or np.min(observation) < -100.0:
-            full_traceback = "Observation out of bounds (deepmimic_env step)"
-            # write debug log and traceback to /tmp/ for debugging
-            path = "/tmp/deepmimic_episode_{}.json".format(time.strftime("%Y%m%d-%H%M_%S"))
-            self.episode_debug_log["full_traceback"] = full_traceback
-            self.episode_debug_log["robot"] = self.robot_config.robot
-            with open(path, "w") as f:
-                f.write(json.dumps(self.episode_debug_log, indent=4))
-            print("Observation out of bounds in step, debug log written to {}".format(path))
+            if DEBUG:
+                full_traceback = "Observation out of bounds (deepmimic_env step)"
+                # write debug log and traceback to /tmp/ for debugging
+                path = "/tmp/deepmimic_episode_{}.json".format(time.strftime("%Y%m%d-%H%M_%S"))
+                self.episode_debug_log["full_traceback"] = full_traceback
+                self.episode_debug_log["robot"] = self.robot_config.robot
+                with open(path, "w") as f:
+                    f.write(json.dumps(self.episode_debug_log, indent=4))
+                print("Observation out of bounds in step, debug log written to {}".format(path))
             done = True
             return self._get_obs() * 0., 0, done, {}
+        if PROFILE:
+            post_end = time.time()
+            print(f"{self.uid} Post-step (ms) {post_start * 1000} -> {post_end * 1000} = {(post_end - post_start) * 1000}")
 
+        if PROFILE:
+            end = time.time()
+            print(f"{self.uid} Env step (ms) {start_timer * 1000} -> {end * 1000} = {(end - start_timer) * 1000}") # PROFILE
         return observation, reward, done, info
     
     def _get_obs(self):

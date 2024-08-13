@@ -20,6 +20,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 from deepmimic_env import DPEnv
 from combined_env import DPCombinedEnv
 
+M = 1000000 # short for one million
 
 def eval_dashboard_rollout(model, eval_env, n, run_name, log_wandb=True):
     """ Collect an episode and plot it """
@@ -169,7 +170,7 @@ class EvalDashboardCallbackThreaded(BaseCallback):
         self.last_work_duration = None
         # start work thread
         import threading
-        self.work_thread = threading.Thread(target=self.workloop)
+        self.work_thread = threading.Thread(target=self.workloop, daemon=True)
         self.work_thread.start()
 
     # in work thread
@@ -243,11 +244,11 @@ def parse_reason(required=True):
 if __name__ == "__main__":
     DBG_NO_WANDB = False
     reason = parse_reason(required=not DBG_NO_WANDB)
+#     env_name = "deep_mimic_mujoco"
     env_name = "dp_combined_env"
     motion = "run"
     task = ""
     robot = "unitree_g1"
-    M = 1000000
     # train a policy
     # hyperparams
     EVAL_N = 500000

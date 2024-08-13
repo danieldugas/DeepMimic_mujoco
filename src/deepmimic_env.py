@@ -15,6 +15,8 @@ from gym.spaces import Box
 from config import MotionConfig, RobotConfig
 import py3dtf
 
+PROFILE = False
+
 BODY_JOINTS = ["chest", "neck", "right_shoulder", "right_elbow", 
             "left_shoulder", "left_elbow", "right_hip", "right_knee", 
             "right_ankle", "left_hip", "left_knee", "left_ankle"]
@@ -236,6 +238,7 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
     version = "v1.0"
     ENV_CFG = DPEnvConfig()
     def __init__(self, motion=None, load_mocap=True, robot="humanoid3d"):
+        self.uid = "".join([random.choice("!@#$%^*()_+-abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") for _ in range(3)])
         self.motion_config = MotionConfig(motion=motion, robot=robot)
         self.robot_config = RobotConfig(robot=robot)
         xml_file_path = self.motion_config.xml_path
@@ -295,6 +298,8 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 
 
     def step(self, action, force_state=None):
+        if PROFILE:
+            start_timer = time.time()
         info = dict()
         # self.step_len = int(self.mocap_dt // self.model.opt.timestep)
         self.step_len = 1
@@ -302,6 +307,8 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         step_times = 1
 
         # action pre-processing
+        if PROFILE:
+            act_timer = time.time()
         mujoco_action = action * 1.
         if self.robot_config.robot == "unitree_g1":
             mujoco_action = action * 20.
@@ -315,7 +322,12 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             self.set_state(qpos, qvel)
         else:
             try:
+                if PROFILE:
+                    sim_start = time.time()
                 self.do_simulation(mujoco_action, step_times)
+                if PROFILE:
+                    sim_end = time.time()
+                    print(f"{self.uid} Sim step (ms) {sim_start * 1000} -> {sim_end * 1000} = {(sim_end - sim_start) * 1000}") # PROFILE
             except: # With unitree G1, sometimes the simulation diverges. Here, we log to disk and reset
                 full_traceback = traceback.format_exc()
                 # write debug log and traceback to /tmp/ for debugging
@@ -329,17 +341,27 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
                 print("Error in step, debug log written to {}".format(path))
                 done = True
                 return self._get_obs() * 0., 0, done, {}
+        if PROFILE:
+            act_end = time.time()
+            print(f"{self.uid} Act (ms) {act_timer * 1000} -> {act_end * 1000} = {(act_end - act_timer) * 1000}")
 
         # pos_after = mass_center(self.model, self.sim)
 
         # Observation
         # -----------------------------------------
+        if PROFILE:
+            obs_start = time.time()
         observation = self._get_obs()
+        if PROFILE:
+            obs_end = time.time()
+            print(f"{self.uid} Obs get (ms) {obs_start * 1000} -> {obs_end * 1000} = {(obs_end - obs_start) * 1000}")
 
         if self.mocap.data_config is None:
             return observation, 0, False, {}
 
         # Reward
+        if PROFILE:
+            rew_start = time.time()
         wp = 0.75
         wv = 0.1
         we = 0.15
@@ -349,8 +371,13 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             wp, wv, we, wc, wj,
             self.sim.data, self.model, self.mocap, self.idx_curr, self.ENV_CFG, self.robot_config, info
         )
+        if PROFILE:
+            rew_end = time.time()
+            print(f"{self.uid} Reward calc (ms) {rew_start * 1000} -> {rew_end * 1000} = {(rew_end - rew_start) * 1000}")
 
         # Termination
+        if PROFILE:
+            term_start = time.time()
         mass, curr_root_roll, target_root_roll, curr_root_pitch, target_root_pitch, config_angle_diffs = intermediate_values
         # -------------------------------
         done = False
@@ -378,9 +405,14 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         if (self.idx_curr + 1) == self.mocap_data_len and self.motion_config.motion in self.motion_config.acyclical_motions:
             done = True
             info["done_reason"] = "acyclical_end"
+        if PROFILE:
+            term_end = time.time()
+            print(f"{self.uid} Term check (ms) {term_start * 1000} -> {term_end * 1000} = {(term_end - term_start) * 1000}")
 
         # Post-step
         # ------------------------------------------
+        if PROFILE:
+            post_start = time.time()
         # increment mocap frame
         self.idx_curr = (self.idx_curr + 1) % self.mocap_data_len
         # increment episode counters
@@ -407,7 +439,13 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             print("Observation out of bounds in step, debug log written to {}".format(path))
             done = True
             return self._get_obs() * 0., 0, done, {}
+        if PROFILE:
+            post_end = time.time()
+            print(f"{self.uid} Post-step (ms) {post_start * 1000} -> {post_end * 1000} = {(post_end - post_start) * 1000}")
 
+        if PROFILE:
+            end = time.time()
+            print(f"{self.uid} Env step (ms) {start_timer * 1000} -> {end * 1000} = {(end - start_timer) * 1000}") # PROFILE
         return observation, reward, done, info
 
     def is_done(self):

@@ -33,3 +33,5 @@ data/intermediate/
 src/wandb/
 wandb/
 xenv/
+
+program.prof
