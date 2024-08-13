@@ -5,6 +5,7 @@ import os
 import time
 import wandb
 from tqdm import tqdm
+import numpy as np
 # this stops a strange bug where after hours of training tkinter causes a crash in the workers
 if __name__ == "__main__":
     import matplotlib
@@ -139,19 +140,91 @@ def eval_dashboard_rollout(model, eval_env, n, run_name, log_wandb=True):
 
 
 class EvalDashboardCallback(BaseCallback):
-    def __init__(self, eval_env, run_name, log_wandb=True, verbose: int = 0):
+    def __init__(self, eval_env, run_name, log_wandb=True, verbose: int = 0, every_n_global_steps=500000):
         super().__init__(verbose)
         self.eval_env = eval_env
         self.run_name = run_name
         self.log_wandb = log_wandb
+        self.every_n_global_steps = every_n_global_steps
 
     def _on_step(self) -> bool:
         n = self.num_timesteps
         model = self.model
         eval_env = self.eval_env
         n_agents = self.num_timesteps // self.n_calls
-        if self.n_calls % (500000 // n_agents) == 0 or self.n_calls == 1:
+        if self.n_calls % (self.every_n_global_steps // n_agents) == 0 or self.n_calls == 1:
             eval_dashboard_rollout(model, eval_env, n, self.run_name, log_wandb=self.log_wandb)
+        return True
+
+class EvalDashboardCallbackThreaded(BaseCallback):
+    def __init__(self, eval_env, run_name, log_wandb=True, verbose: int = 0, every_n_global_steps=500000):
+        super().__init__(verbose)
+        self.eval_env = eval_env
+        self.run_name = run_name
+        self.log_wandb = log_wandb
+        self.is_working = False
+        self.next_workorder = None
+        self.uid = np.random.randint(0, 1000000)
+        self.every_n_global_steps = every_n_global_steps
+        self.last_work_duration = None
+        # start work thread
+        import threading
+        self.work_thread = threading.Thread(target=self.workloop)
+        self.work_thread.start()
+
+    # in work thread
+    def workloop(self):
+        while True:
+            if self.next_workorder is None:
+                time.sleep(0.5)
+                continue
+            cpmodel, n = self.next_workorder
+            eval_env = self.eval_env
+            print("Eval worker: starting eval job for global step", n)
+            start = time.time()
+            self.is_working = True
+            eval_dashboard_rollout(cpmodel, eval_env, n, self.run_name, log_wandb=self.log_wandb)
+            self.is_working = False
+            duration = time.time() - start
+            self.last_work_duration = duration
+            print("Eval worker: finished eval job for global step", n, "(" + str(duration) + "s)")
+            
+    # in main thread
+    def wait_until_idle(self):
+        start = time.time()
+        last = None
+        while True:
+            if not self.is_working:
+                print("Last eval job took", self.last_work_duration, "seconds")
+                if last is not None:
+                    print("Eval worker is now free (waited for", time.time() - start, "seconds)")
+                else:
+                    print("No wait needed, eval worker is free.")
+                return
+            time.sleep(0.5)
+            # maybe the worker is stuck
+            if last is None or (time.time() - last) > 60:
+                prefix = "W" if last is None else "Still w"
+                print(prefix + "aiting for previous eval job to finish. Consider increasing the interval between evals.")
+                last = time.time()
+
+    def queue_workorder(self, cpmodel, n):
+        print("Queueing eval job for global step", n)
+        self.next_workorder = (cpmodel, n)
+
+    def _on_step(self) -> bool:
+        n = self.num_timesteps
+        model = self.model
+        n_agents = self.num_timesteps // self.n_calls
+        if self.n_calls % (self.every_n_global_steps // n_agents) == 0 or self.n_calls == 1:
+            # save a frozen copy of the model
+            cpmodel_path = "/tmp/eval_cpmodel_" + str(self.uid)
+            model.save(cpmodel_path)
+            cpmodel = type(model).load(cpmodel_path)
+            # wait for the worker to be free
+            self.wait_until_idle()
+            # queue the next eval job
+            self.queue_workorder(cpmodel, n)
         return True
 
 def parse_reason(required=True):
@@ -176,6 +249,7 @@ if __name__ == "__main__":
     M = 1000000
     # train a policy
     # hyperparams
+    EVAL_N = 500000
     TOT = 200*M
     N_AG = 32
     HRZ = 4096
@@ -229,8 +303,8 @@ if __name__ == "__main__":
                     n_steps=HRZ, learning_rate=LR, n_epochs=EPOCHS, batch_size=minibatch_size)
     print("Begin Learn")
     print("-----------")
-    model.learn(total_timesteps=TOT, tb_log_name=run.name, callback=EvalDashboardCallback(
-        eval_env, motion + task + "_" + run.name, log_wandb=not DBG_NO_WANDB))
+    model.learn(total_timesteps=TOT, tb_log_name=run.name, callback=EvalDashboardCallbackThreaded(
+        eval_env, motion + task + "_" + run.name, log_wandb=not DBG_NO_WANDB, every_n_global_steps=EVAL_N))
     model.save(os.path.expanduser("~/deep_mimic/" + run.name))
 
     del model # remove to demonstrate saving and loading

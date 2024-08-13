@@ -26,6 +26,7 @@ if __name__ == "__main__":
     M = 1000000
     # train a policy
     # hyperparams
+    EVAL_N = 500000
     TOT = 100*M
     N_AG = 32
     HRZ = 4096
@@ -81,7 +82,8 @@ if __name__ == "__main__":
                 )
     print("Begin Learn")
     print("-----------")
-    model.learn(total_timesteps=TOT, tb_log_name=run.name, callback=EvalDashboardCallback(eval_env, motion + task + "_" + run.name, log_wandb=not DBG_NO_WANDB))
+    model.learn(total_timesteps=TOT, tb_log_name=run.name, callback=EvalDashboardCallback(
+        eval_env, motion + task + "_" + run.name, log_wandb=not DBG_NO_WANDB, every_n_global_steps=EVAL_N))
     model.save(os.path.expanduser("~/deep_mimic/" + run.name))
 
     del model # remove to demonstrate saving and loading
