@@ -257,6 +257,7 @@ if __name__ == "__main__":
     EPOCHS = 20
     LR = 0.0004
     LOG_FREQ = 1*M // N_AG # log every 1M global steps
+#     policy_kwargs = dict(net_arch=[1024, 512])
     policy_kwargs = dict(net_arch=[256, 128])
     # run info
     class Run:
@@ -264,16 +265,23 @@ if __name__ == "__main__":
     run = Run()
     batch_size = HRZ * N_AG
     minibatch_size = 4096
+    # env
+    if env_name == "deep_mimic_mujoco":
+        eval_env = DPEnv(motion=motion, robot=robot)
+        envs = SubprocVecEnv([lambda: DPEnv(motion=motion, robot=robot) for i in range(N_AG)])
+    elif env_name == "dp_combined_env":
+        eval_env = DPCombinedEnv()
+        envs = SubprocVecEnv([lambda: DPCombinedEnv() for i in range(N_AG)])
     config = {
         "run_reason": reason,
         "policy_type": "MlpPolicy",
         "total_timesteps": TOT,
         "env_name": env_name,
+        "version": eval_env.version,
+        "env_cfg": eval_env.ENV_CFG.__dict__.copy(),
         "motion": motion,
         "task": task,
         "robot": robot,
-        "version": DPEnv.version,
-        "env_cfg": DPEnv.ENV_CFG.__dict__.copy(),
         "arch": policy_kwargs["net_arch"],
         "n_agents": N_AG,
         "horizon": HRZ,
@@ -292,12 +300,6 @@ if __name__ == "__main__":
             monitor_gym=True,  # auto-upload the videos of agents playing the game
             save_code=True,  # optional
         )
-    if env_name == "deep_mimic_mujoco":
-        eval_env = DPEnv(motion=motion, robot=robot)
-        envs = SubprocVecEnv([lambda: DPEnv(motion=motion, robot=robot) for i in range(N_AG)])
-    elif env_name == "dp_combined_env":
-        eval_env = DPCombinedEnv()
-        envs = SubprocVecEnv([lambda: DPCombinedEnv() for i in range(N_AG)])
     model = PPO(MlpPolicy, envs, policy_kwargs=policy_kwargs, verbose=1,
                     tensorboard_log=os.path.expanduser("~/tensorboard/"),
                     n_steps=HRZ, learning_rate=LR, n_epochs=EPOCHS, batch_size=minibatch_size)
