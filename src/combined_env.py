@@ -149,8 +149,9 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
     initialize in random motion-state, random mocap frame
 
     """
-    def __init__(self, verbose=0):
+    def __init__(self, verbose=0, _profile=False):
         # uid: three random number/letters/caps
+        self.PROFILE = _profile
         self.uid = "".join([random.choice("!@#$%^*()_+-abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") for _ in range(3)])
         self.verbose = verbose
         self.robot = "unitree_g1"
@@ -216,13 +217,13 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         return observation
 
     def step(self, action, force_state=None):
-        if PROFILE:
+        if self.PROFILE:
             start_timer = time.time()
         step_times = 1
         info = {}
 
         # action pre-processing
-        if PROFILE:
+        if self.PROFILE:
             act_timer = time.time()
         mujoco_action = action * 1.
         if self.robot == "unitree_g1":
@@ -237,10 +238,10 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             self.set_state(qpos, qvel)
         else:
             try:
-                if PROFILE:
+                if self.PROFILE:
                     sim_start = time.time()
                 self.do_simulation(mujoco_action, step_times)
-                if PROFILE:
+                if self.PROFILE:
                     sim_end = time.time()
                     print(f"{self.uid} Sim step (ms) {sim_start * 1000} -> {sim_end * 1000} = {(sim_end - sim_start) * 1000}") # PROFILE
             except: # With unitree G1, sometimes the simulation diverges. Here, we log to disk and reset
@@ -256,14 +257,14 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
                     print("Error in step, debug log written to {}".format(path))
                 done = True
                 return self._get_obs() * 0., 0, done, {}
-        if PROFILE:
+        if self.PROFILE:
             act_end = time.time()
             print(f"{self.uid} Act (ms) {act_timer * 1000} -> {act_end * 1000} = {(act_end - act_timer) * 1000}")
 
         # Maybe sample a different player action
         # -----------------------------------------
         # We should use the current PA for this reward, but the next PA for this observation
-        if PROFILE:
+        if self.PROFILE:
             pa_start = time.time()
         next_player_action = self.current_player_action
         is_player_action_change = False
@@ -275,23 +276,23 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         if np.random.rand() < (1. / AVG_STEPS_TO_PA_CHANGE): # player input on average every 500 steps
             next_player_action = PARun() if isinstance(self.current_player_action, PAWalk) else PAWalk()
             is_player_action_change = True
-        if PROFILE:
+        if self.PROFILE:
             pa_end = time.time()
             print(f"{self.uid} PA sample (ms) {pa_start * 1000} -> {pa_end * 1000} = {(pa_end - pa_start) * 1000}")
 
         # Observation
         # -----------------------------------------
-        if PROFILE:
+        if self.PROFILE:
             obs_start = time.time()
         observation = self._get_obs() * 1.
-        if PROFILE:
+        if self.PROFILE:
             obs_end = time.time()
             print(f"{self.uid} Obs get (ms) {obs_start * 1000} -> {obs_end * 1000} = {(obs_end - obs_start) * 1000}")
 
 
         # Reward
         # -----------------------------------------
-        if PROFILE:
+        if self.PROFILE:
             rew_start = time.time()
         # imitation reward
         wp = 0.75
@@ -318,7 +319,7 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         wi = 0.7
         wt = 0.3
         reward = imitation_reward * wi + task_reward * wt
-        if PROFILE:
+        if self.PROFILE:
             rew_end = time.time()
             print(f"{self.uid} Reward calc (ms) {rew_start * 1000} -> {rew_end * 1000} = {(rew_end - rew_start) * 1000}")
         
@@ -329,7 +330,7 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 
         # Termination
         # -------------------------------
-        if PROFILE:
+        if self.PROFILE:
             term_start = time.time()
         done = False
         # Ran out of time
@@ -427,14 +428,14 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
                 if self.episode_length >= self.ENV_CFG.MAX_EP_LENGTH:
                     done = True
                     info["done_reason"] = "max_ep_len"
-        if PROFILE:
+        if self.PROFILE:
             term_end = time.time()
             print(f"{self.uid} Term check (ms) {term_start * 1000} -> {term_end * 1000} = {(term_end - term_start) * 1000}")
             
         
         # Post-step
         # ------------------------------------------
-        if PROFILE:
+        if self.PROFILE:
             post_start = time.time()
         # set player action
         self.current_player_action = next_player_action
@@ -467,11 +468,11 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
                 print("Observation out of bounds in step, debug log written to {}".format(path))
             done = True
             return self._get_obs() * 0., 0, done, {}
-        if PROFILE:
+        if self.PROFILE:
             post_end = time.time()
             print(f"{self.uid} Post-step (ms) {post_start * 1000} -> {post_end * 1000} = {(post_end - post_start) * 1000}")
 
-        if PROFILE:
+        if self.PROFILE:
             end = time.time()
             print(f"{self.uid} Env step (ms) {start_timer * 1000} -> {end * 1000} = {(end - start_timer) * 1000}") # PROFILE
         return observation, reward, done, info
