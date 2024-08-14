@@ -246,7 +246,7 @@ if __name__ == "__main__":
     reason = parse_reason(required=not DBG_NO_WANDB)
 #     env_name = "deep_mimic_mujoco"
     env_name = "dp_combined_env"
-    motion = "run"
+    motion = "cb"
     task = ""
     robot = "unitree_g1"
     # train a policy

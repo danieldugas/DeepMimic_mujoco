@@ -23,7 +23,12 @@ if __name__ == "__main__":
     # chkpt_path = os.path.expanduser("~/deep_mimic/walk_woven-glade-55_videos/walk_woven-glade-55_best")
     model = PPO.load(chkpt_path)
     obs = env.reset()
-    obs = env.reset_model(idx_init=0)
+    idx_init = 0
+    obs = env.reset_model(idx_init=idx_init)
+    print("let init_qpos = [", ", ".join(["{:.5f}".format(n) for n in env.sim.data.qpos]), "];")
+    print("let init_qvel = [", ", ".join(["{:.5f}".format(n) for n in env.sim.data.qvel]), "];")
+    print("this.mocap_start_frame = ", idx_init, ";")
+    print("this.mocap_len = ", env.mocap.get_length(), ";")
     ep_rew = 0
     for i in range(1000):
         env.render(mode="human")
