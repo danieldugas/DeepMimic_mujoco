@@ -35,3 +35,4 @@ if __name__ == "__main__":
         if done:
             break
     print("Episode reward: ", ep_rew)
+    assert ep_rew > 90, "Run Polar Breeze is broken"

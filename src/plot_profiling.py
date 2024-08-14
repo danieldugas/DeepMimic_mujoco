@@ -817,7 +817,7 @@ N^P Env step (ms) 1723561076234.995 -> 1723561076298.7256 = 63.730478286743164
 """
 
 # single thread cbenv
-cbenv_step_prof_log = """
+XXX_cbenv_step_prof_log = """
 *$I Sim step (ms) 1723563464559.3633 -> 1723563464561.7422 = 2.378702163696289
 *$I Act (ms) 1723563464559.3464 -> 1723563464561.76 = 2.413511276245117
 *$I PA sample (ms) 1723563464561.773 -> 1723563464561.7776 = 0.0045299530029296875
@@ -848,7 +848,7 @@ for line in step_prof_log.split('\n'):
 
     color = 'grey'
     if "Act" in name:
-        color = 'yellow'
+        continue
     if "Sim" in name:
         color = 'r'
     if "PA" in name:
@@ -856,13 +856,14 @@ for line in step_prof_log.split('\n'):
     if "Obs" in name:
         color = 'blue'
     if "Reward" in name:
-        color = 'purple'
+        color = 'yellow'
     if "Term" in name:
         color = 'green'
     if "Post" in name:
-        color = 'orange'
+        color = 'purple'
     
 
     ax.barh(uid, duration_ms, left=start_ms, color=color, alpha=0.5, label=name)
-    ax.text((start_ms+end_ms)/2., uid, name, va='center', ha='left', fontsize=8)
+    ax.text((start_ms+end_ms)/2., uid, name, va='center', ha='center', fontsize=6, color='k')
+plt.title('step() Method Per-process Profiling')
 plt.show()
