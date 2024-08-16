@@ -374,7 +374,7 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
                 if self.current_motion_mocap == self.getup_mocap:
 #                     done = True
 #                     info["done_reason"] = "oot_in_getup"
-                    self.change_to_motion(self.to_getup_mocap)
+                    self.change_to_motion(self.to_walk_mocap) if self.current_player_action == PAWalk() else self.change_to_motion(self.to_run_mocap)
                 if self.current_motion_mocap == self.to_getup_mocap:
                     self.change_to_motion(self.getup_mocap)
                 if self.current_motion_mocap == self.to_walk_mocap:
