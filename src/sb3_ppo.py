@@ -259,8 +259,8 @@ if __name__ == "__main__":
     EPOCHS = 20
     LR = 0.0004
     LOG_FREQ = 1*M // N_AG # log every 1M global steps
-    policy_kwargs = dict(net_arch=[1024, 512])
-#     policy_kwargs = dict(net_arch=[256, 128])
+#     policy_kwargs = dict(net_arch=[1024, 512])
+    policy_kwargs = dict(net_arch=[256, 128])
     # run info
     class Run:
         name = "test" + time.strftime("%Y%m%d-%H%M_%S")

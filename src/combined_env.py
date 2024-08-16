@@ -97,7 +97,9 @@ class MTToGetup(MotionTransition):
 
 
 class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.1.falling_amnesty_tw"
+    version = "v0.1.falling_amnesty_tw_nooot"
+    # tw: towalk mocap in getup
+    # nooot: no-out-of-time - auto transition from getup to to_walk. only fall terminates
     ENV_CFG = DPCombinedEnvConfig()
     """ 
 
@@ -181,7 +183,6 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         self.current_motion_n_steps = None # how many steps have we been trying to perform this motion
         self.current_motion_mocap = None # current target motion
         self.current_player_action = None
-        self.current_steps_without_failing = 0
         # motion-frame
 
         mujoco_env.MujocoEnv.__init__(self, self.robot_config.xml_path, 6)
@@ -200,18 +201,18 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 
     def reset(self, rsi=True):
         # first state : getup
+#         if rmi: # start with any motion
+#             self.current_motion_mocap = [self.getup_mocap, self.walk_mocap, self.run_mocap][random.randint(0, 2)]
+#             self.current_player_action = PARun() if self.current_motion_mocap == self.run_mocap else PAWalk()
+#             self.current_motion_n_steps = random.randint(0, self.current_motion_mocap.get_length() - 1)
         if rsi:
             self.current_motion_mocap = self.getup_mocap
             self.current_player_action = PAWalk()
             self.current_motion_n_steps = random.randint(0, int(self.current_motion_mocap.get_length() * 0.8))
-#             self.current_motion_mocap = [self.getup_mocap, self.walk_mocap, self.run_mocap][random.randint(0, 2)]
-#             self.current_player_action = PARun() if self.current_motion_mocap == self.run_mocap else PAWalk()
-#             self.current_motion_n_steps = random.randint(0, self.current_motion_mocap.get_length() - 1)
         else:
             self.current_motion_mocap = self.getup_mocap
             self.current_motion_n_steps = 0
             self.current_player_action = PAWalk()
-        self.current_steps_without_failing = 0
         # reset variables
         self.episode_reward = 0
         self.episode_length = 0
@@ -371,8 +372,9 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             is_out_of_time = self.current_motion_n_steps >= self.current_motion_mocap.get_length()
             if is_out_of_time:
                 if self.current_motion_mocap == self.getup_mocap:
-                    done = True
-                    info["done_reason"] = "oot_in_getup"
+#                     done = True
+#                     info["done_reason"] = "oot_in_getup"
+                    self.change_to_motion(self.to_getup_mocap)
                 if self.current_motion_mocap == self.to_getup_mocap:
                     self.change_to_motion(self.getup_mocap)
                 if self.current_motion_mocap == self.to_walk_mocap:
@@ -421,19 +423,19 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
                     is_fallen = True
                 if np.abs(curr_root_pitch - target_root_pitch) > MAX_ANGLE:
                     is_fallen = True
-            if is_fallen:
-                if self.current_steps_without_failing < 100: # we allow falling only after some successfuly walking
-                    done = True
-                    info["done_reason"] = "fallen without amnesty"
-                self.current_steps_without_failing = 0
-                if self.current_motion_mocap == self.to_walk_mocap:
-                    self.change_to_motion(self.to_getup_mocap)
-                if self.current_motion_mocap == self.to_run_mocap:
-                    self.change_to_motion(self.to_getup_mocap)
-                if self.current_motion_mocap == self.walk_mocap:
-                    self.change_to_motion(self.to_getup_mocap)
-                if self.current_motion_mocap == self.run_mocap:
-                    self.change_to_motion(self.to_getup_mocap)
+                if is_fallen:
+                    has_earned_amnesty = self.current_motion_mocap in [self.walk_mocap, self.run_mocap] and self.current_motion_n_steps > 150
+                    if not has_earned_amnesty: # we allow falling only after some successfuly walking/running
+                        done = True
+                        info["done_reason"] = "fallen without amnesty"
+                    if self.current_motion_mocap == self.to_walk_mocap:
+                        self.change_to_motion(self.to_getup_mocap)
+                    if self.current_motion_mocap == self.to_run_mocap:
+                        self.change_to_motion(self.to_getup_mocap)
+                    if self.current_motion_mocap == self.walk_mocap:
+                        self.change_to_motion(self.to_getup_mocap)
+                    if self.current_motion_mocap == self.run_mocap:
+                        self.change_to_motion(self.to_getup_mocap)
             # Max episode length
             if self.ENV_CFG.MAX_EP_LENGTH != 0:
                 if self.episode_length >= self.ENV_CFG.MAX_EP_LENGTH:
@@ -456,8 +458,6 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         # increment episode counters
         self.episode_reward += reward
         self.episode_length += 1
-        if self.current_motion_mocap in [self.to_walk_mocap, self.to_run_mocap, self.walk_mocap, self.run_mocap]:
-            self.current_steps_without_failing += 1
 
 
         # debug log
