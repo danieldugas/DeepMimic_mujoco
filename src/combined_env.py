@@ -97,7 +97,7 @@ class MTToGetup(MotionTransition):
 
 
 class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.1.falling_amnesty"
+    version = "v0.1.falling_amnesty_tw"
     ENV_CFG = DPCombinedEnvConfig()
     """ 
 
@@ -159,7 +159,7 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 
         # motions
         walk_motion_config = MotionConfig(motion="walk", robot=self.robot)
-        getup_motion_config = MotionConfig(motion="getup_facedown_slow_FSI", robot=self.robot)
+        getup_motion_config = MotionConfig(motion="getup_facedown_towalk", robot=self.robot)
         run_motion_config = MotionConfig(motion="run", robot=self.robot)
         self.walk_mocap = MocapDM(robot=self.robot)
         self.walk_mocap.load_mocap(walk_motion_config.mocap_path)
@@ -176,6 +176,7 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         self.episode_reward = 0
         self.episode_length = 0
         self.episode_debug_log = {}
+        self.debug_n_bad_angles = 0
         # motion-state
         self.current_motion_n_steps = None # how many steps have we been trying to perform this motion
         self.current_motion_mocap = None # current target motion
@@ -397,6 +398,7 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             is_roll_close = np.abs(curr_root_roll - target_root_roll) < ALIM
             is_angle_diff_close = np.all(np.abs(config_angle_diffs) < ALIM)
             is_successful = is_pitch_close and is_roll_close and is_angle_diff_close
+            self.debug_n_bad_angles = np.sum(np.abs(config_angle_diffs) > ALIM) + (np.abs(curr_root_pitch - target_root_pitch) > ALIM) + (np.abs(curr_root_roll - target_root_roll) > ALIM)
             if is_successful:
                 if self.current_motion_mocap == self.getup_mocap:
                     # only check for the last 20 frames:
@@ -507,7 +509,7 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         self.viewer.cam.lookat[0] = self.sim.data.qpos[0] # works for camera tracking
         if mode == "rgb_array":
             # add reward to the screen
-            string = "{} {:>5} {:>7.2f}".format(self.current_motion_mocap.motion_name[-8:], self.episode_length, self.episode_reward)
+            string = "{} {} {:>5} {:>7.2f}".format(self.current_motion_mocap.motion_name[-8:], self.debug_n_bad_angles, self.episode_length, self.episode_reward)
             # using opencv put_text:
             import cv2
             font = cv2.FONT_HERSHEY_SIMPLEX

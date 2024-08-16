@@ -630,4 +630,4 @@ def check_rewards_and_joint_limits(motion, robot):
 
 if __name__ == "__main__":
     # loop_motion("getup_facedown", "humanoid3d")
-    check_rewards_and_joint_limits(motion="run", robot="humanoid3d")
+    check_rewards_and_joint_limits(motion="getup_facedown_towalk", robot="unitree_g1")
