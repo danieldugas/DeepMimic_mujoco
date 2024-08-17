@@ -97,7 +97,7 @@ class MTToGetup(MotionTransition):
 
 
 class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.2"
+    version = "v0.2.rmi"
     # tw: towalk mocap in getup
     # nooot: no-out-of-time - auto transition from getup to to_walk. only fall terminates
     ENV_CFG = DPCombinedEnvConfig()
@@ -200,13 +200,14 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
     def reset(self, rsi=True):
         # first state : getup
         if rsi:
-            self.current_motion_mocap = self.getup_mocap
-            self.current_player_action = PAWalk()
-            self.current_motion_n_steps = random.randint(0, self.current_motion_mocap.get_length() - 1)
+            # getup init
+#             self.current_motion_mocap = self.getup_mocap
+#             self.current_player_action = PAWalk()
+#             self.current_motion_n_steps = random.randint(0, self.current_motion_mocap.get_length() - 1)
             # if rmi: # start with any motion
-            #     self.current_motion_mocap = [self.getup_mocap, self.walk_mocap, self.run_mocap][random.randint(0, 2)]
-            #     self.current_player_action = PARun() if self.current_motion_mocap == self.run_mocap else PAWalk()
-            #     self.current_motion_n_steps = random.randint(0, self.current_motion_mocap.get_length() - 1)
+            self.current_motion_mocap = [self.getup_mocap, self.walk_mocap, self.run_mocap][random.randint(0, 2)]
+            self.current_player_action = PARun() if self.current_motion_mocap == self.run_mocap else PAWalk()
+            self.current_motion_n_steps = random.randint(0, self.current_motion_mocap.get_length() - 1)
         else:
             self.current_motion_mocap = self.getup_mocap
             self.current_motion_n_steps = 0
