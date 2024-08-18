@@ -97,9 +97,8 @@ class MTToGetup(MotionTransition):
 
 
 class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.2.rmi"
-    # tw: towalk mocap in getup
-    # nooot: no-out-of-time - auto transition from getup to to_walk. only fall terminates
+    version = "v0.2.rmi_pgs"
+    # pgs: pa_getup_state (tells the model to get up)
     ENV_CFG = DPCombinedEnvConfig()
     """ 
 
@@ -469,7 +468,13 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         # for the phase obs, we loop the phase index
         current_motion_mocap_len = self.current_motion_mocap.get_length() if self.current_motion_mocap is not None else 1
         current_motion_phase_idx = (self.current_motion_n_steps % current_motion_mocap_len) if self.current_motion_n_steps is not None else 0
-        return get_obs(self.sim.data, self.model, current_motion_phase_idx, current_motion_mocap_len, self.current_player_action, self.ENV_CFG, self.robot_config)
+        if self.current_motion_mocap == self.getup_mocap:
+            pa_getup_state = [0, 1]
+        elif self.current_motion_mocap == self.to_getup_mocap:
+            pa_getup_state = [1, 0]
+        else:
+            pa_getup_state = [0, 0]
+        return get_obs(self.sim.data, self.model, current_motion_phase_idx, current_motion_mocap_len, self.current_player_action, pa_getup_state, self.ENV_CFG, self.robot_config)
 
     def viewer_setup(self):
         """ overrides MujocoEnv.viewer_setup """

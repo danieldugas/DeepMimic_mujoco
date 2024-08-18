@@ -30,7 +30,7 @@ def mass_center(model, sim):
     return (np.sum(mass * xpos, 0) / np.sum(mass))[0]
 
 # Common observation functions
-def get_obs(mjdata, mjmodel, idx_curr, motion_len, player_action, ENV_CFG, robot_config):
+def get_obs(mjdata, mjmodel, idx_curr, motion_len, player_action, pa_getup_state, ENV_CFG, robot_config):
     position = mjdata.qpos.flat.copy()[7:] # ignore root joint
     velocity = mjdata.qvel.flat.copy()[6:] # ignore root joint
     S = ENV_CFG.VEL_OBS_SCALE
@@ -40,7 +40,7 @@ def get_obs(mjdata, mjmodel, idx_curr, motion_len, player_action, ENV_CFG, robot
     joint_force = get_joint_force_obs(mjdata, mjmodel, ENV_CFG, robot_config)
     abs_pos = get_abspos_obs(mjdata, mjmodel, ENV_CFG, robot_config)
     phase_obs  = get_phase_obs(idx_curr, motion_len, ENV_CFG, robot_config)
-    player_action_obs = get_player_action_obs(mjdata, mjmodel, player_action, ENV_CFG, robot_config)
+    player_action_obs = get_player_action_obs(mjdata, mjmodel, player_action, pa_getup_state, ENV_CFG, robot_config)
     return np.concatenate((position, velocity, torso, foot_contact, joint_force, abs_pos, phase_obs, player_action_obs))
 
 def get_torso_obs(mjdata, mjmodel, ENV_CFG, robot_config):
@@ -125,9 +125,15 @@ def get_phase_obs(idx_curr, motion_len, ENV_CFG, robot_config):
     phase_01 = np.clip(1.0 * idx_curr / motion_len, 0., 1.)
     return [phase_01]
 
-def get_player_action_obs(mjdata, mjmodel, player_action, ENV_CFG, robot_config):
+def get_player_action_obs(mjdata, mjmodel, player_action, pa_getup_state, ENV_CFG, robot_config):
+    """
+    player_action: PlayerAction object, has a onehot method
+    pa_getup_state: [0, 1] if getup, [1, 0] to_getup, [0, 0] otherwise
+    """
     if not ENV_CFG.ADD_PLAYER_ACTION_OBS:
         return []
+    if pa_getup_state is None:
+        pa_getup_state = np.zeros(2)
     # onehot action vector
     if player_action is None:
         oh = np.zeros(ENV_CFG.MAX_PLAYER_ACTIONS)
@@ -147,7 +153,7 @@ def get_player_action_obs(mjdata, mjmodel, player_action, ENV_CFG, robot_config)
     #          -->  heading in world (norm 1)  ( hrx = sqrt(2)/2, hry = -sqrt(2)/2 )
     hx = heading_in_world[0] * np.cos(-root_yaw) - heading_in_world[1] * np.sin(-root_yaw)
     hy = heading_in_world[0] * np.sin(-root_yaw) + heading_in_world[1] * np.cos(-root_yaw)
-    return np.concatenate(([hx, hy], oh))
+    return np.concatenate(([hx, hy], oh, pa_getup_state))
     # above code results in 10x faster overall times (sigh.. thread scheduling)
     # heading in pelvis frame (but aligned to floor)
     # root_quat = mjdata.qpos[3:7] # usually pelvis orientation 
@@ -283,7 +289,7 @@ class DPEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             self.action_space = Box(low=self.action_space.low[:N], high=self.action_space.high[:N])
 
     def _get_obs(self):
-        return get_obs(self.sim.data, self.model, self.idx_curr, self.mocap_data_len, None, self.ENV_CFG, self.robot_config)
+        return get_obs(self.sim.data, self.model, self.idx_curr, self.mocap_data_len, None, None, self.ENV_CFG, self.robot_config)
 
     def reference_state_init(self, idx_init=None):
         self.idx_init = random.randint(0, self.mocap_data_len-1)
