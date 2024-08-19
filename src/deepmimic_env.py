@@ -37,11 +37,12 @@ def get_obs(mjdata, mjmodel, idx_curr, motion_len, player_action, pa_getup_state
     velocity = np.array(velocity) * S
     torso = get_torso_obs(mjdata, mjmodel, ENV_CFG, robot_config)
     foot_contact = get_foot_contact_obs(mjdata, mjmodel, ENV_CFG, robot_config)
+    extra_contact = get_extra_contact_obs(mjdata, mjmodel, ENV_CFG, robot_config)
     joint_force = get_joint_force_obs(mjdata, mjmodel, ENV_CFG, robot_config)
     abs_pos = get_abspos_obs(mjdata, mjmodel, ENV_CFG, robot_config)
     phase_obs  = get_phase_obs(idx_curr, motion_len, ENV_CFG, robot_config)
     player_action_obs = get_player_action_obs(mjdata, mjmodel, player_action, pa_getup_state, ENV_CFG, robot_config)
-    return np.concatenate((position, velocity, torso, foot_contact, joint_force, abs_pos, phase_obs, player_action_obs))
+    return np.concatenate((position, velocity, torso, foot_contact, extra_contact, joint_force, abs_pos, phase_obs, player_action_obs))
 
 def get_torso_obs(mjdata, mjmodel, ENV_CFG, robot_config):
     if not ENV_CFG.ADD_TORSO_OBS:
@@ -102,6 +103,22 @@ def get_foot_contact_obs(mjdata, mjmodel, ENV_CFG, robot_config):
         rfoot_floor_contact,
         lfoot_floor_contact,
     ])
+
+def get_extra_contact_obs(mjdata, mjmodel, ENV_CFG, robot_config):
+    if not ENV_CFG.ADD_EXTRA_CONTACT_OBS:
+        return []
+    assert robot_config.extra_contact_geom_names is not None
+    floor_name = robot_config.floor_geom_name
+    extra_contact_obs = [0 for _ in range(len(robot_config.extra_contact_geom_names))]
+    for c in mjdata.contact:
+        name1 = mjmodel.geom_id2name(c.geom1)
+        name2 = mjmodel.geom_id2name(c.geom2)
+        floortouch = name1 == floor_name or name2 == floor_name
+        if floortouch:
+            for i, geom_name in enumerate(robot_config.extra_contact_geom_names):
+                if (name1 == geom_name or name2 == geom_name):
+                    extra_contact_obs[i] = 1.
+    return extra_contact_obs
 
 def get_joint_force_obs(mjdata, mjmodel, ENV_CFG, robot_config):
     if not ENV_CFG.ADD_JOINT_FORCE_OBS:
@@ -244,6 +261,7 @@ class DPEnvConfig:
         self.VEL_OBS_SCALE = 0.1
         self.FRC_OBS_SCALE = 0.001
         self.ADD_FOOT_CONTACT_OBS = True
+        self.ADD_EXTRA_CONTACT_OBS = False
         self.ADD_TORSO_OBS = True
         self.ADD_JOINT_FORCE_OBS = False
         self.ADD_ABSPOS_OBS = False

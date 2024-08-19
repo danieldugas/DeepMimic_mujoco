@@ -8,6 +8,7 @@ class RobotConfig:
             self.lfoot_geom_name = "left_ankle"
             self.rfoot_geom_name = "right_ankle"
             self.floor_geom_name = "floor"
+            self.extra_contact_geom_names = None
             self.endeffector_geom_names = ["left_ankle", "right_ankle", "left_wrist", "right_wrist"]
             self.low_z = 0.7
         elif self.robot == "unitree_g1":
@@ -15,6 +16,8 @@ class RobotConfig:
             self.lfoot_geom_name = "left_foot"
             self.rfoot_geom_name = "right_foot"
             self.floor_geom_name = "floor"
+            self.extra_contact_geom_names = ["left_foot_lheel", "left_foot_rheel", "left_foot_ltoe", "left_foot_rtoe",
+                                             "right_foot_lheel", "right_foot_rheel", "right_foot_ltoe", "right_foot_rtoe"]
             self.endeffector_geom_names = ["left_foot", "right_foot", "left_hand", "right_hand"]
             self.low_z = 0.4
         else:

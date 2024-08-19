@@ -134,11 +134,11 @@
                   <inertial pos="0.024762 2e-05 -0.012526" quat="0.000771333 0.734476 0.000921291 0.678634" mass="0.391"
                     diaginertia="0.00110394 0.0010657 0.000149255"/>
                   <joint name="left_ankle_roll_joint" axis="1 0 0" range="-0.2618 0.2618"/>
-                  <geom type="mesh" class="visual" material="black" mesh="left_ankle_roll_link"/>
-                  <geom pos="-0.06 0.02 -0.03" class="foot"/>
-                  <geom pos="-0.06 -0.02 -0.03" class="foot"/>
-                  <geom pos="0.13 0.02 -0.03" class="foot"/>
-                  <geom pos="0.13 -0.02 -0.03" class="foot"/>
+                  <geom name="left_foot_mesh" type="mesh" class="visual" material="black" mesh="left_ankle_roll_link"/>
+                  <geom name="left_foot_lheel" pos="-0.06 0.02 -0.03" class="foot"/>
+                  <geom name="left_foot_rheel" pos="-0.06 -0.02 -0.03" class="foot"/>
+                  <geom name="left_foot_ltoe" pos="0.13 0.02 -0.03" class="foot"/>
+                  <geom name="left_foot_rtoe" pos="0.13 -0.02 -0.03" class="foot"/>
                 </body>
               </body>
             </body>
@@ -181,11 +181,11 @@
                   <inertial pos="0.024762 -2e-05 -0.012526" quat="-0.000771333 0.734476 -0.000921291 0.678634"
                     mass="0.391" diaginertia="0.00110394 0.0010657 0.000149255"/>
                   <joint name="right_ankle_roll_joint" axis="1 0 0" range="-0.2618 0.2618"/>
-                  <geom type="mesh" class="visual" material="black" mesh="right_ankle_roll_link"/>
-                  <geom pos="-0.06 0.02 -0.03" class="foot"/>
-                  <geom pos="-0.06 -0.02 -0.03" class="foot"/>
-                  <geom pos="0.13 0.02 -0.03" class="foot"/>
-                  <geom pos="0.13 -0.02 -0.03" class="foot"/>
+                  <geom name="right_foot_mesh" type="mesh" class="visual" material="black" mesh="right_ankle_roll_link"/>
+                  <geom name="right_foot_lheel" pos="-0.06 0.02 -0.03" class="foot"/>
+                  <geom name="right_foot_rheel" pos="-0.06 -0.02 -0.03" class="foot"/>
+                  <geom name="right_foot_ltoe" pos="0.13 0.02 -0.03" class="foot"/>
+                  <geom name="right_foot_rtoe" pos="0.13 -0.02 -0.03" class="foot"/>
                 </body>
               </body>
             </body>

@@ -23,7 +23,8 @@ class DPCombinedEnvConfig:
         self.MAX_EP_LENGTH = 2000
         self.VEL_OBS_SCALE = 0.1
         self.FRC_OBS_SCALE = 0.001
-        self.ADD_FOOT_CONTACT_OBS = True
+        self.ADD_FOOT_CONTACT_OBS = False
+        self.ADD_EXTRA_CONTACT_OBS = True
         self.ADD_TORSO_OBS = True
         self.ADD_JOINT_FORCE_OBS = False
         self.ADD_ABSPOS_OBS = False
@@ -97,8 +98,9 @@ class MTToGetup(MotionTransition):
 
 
 class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.2.rmi_pgs"
+    version = "v0.2.rmi_pgs_xct"
     # pgs: pa_getup_state (tells the model to get up)
+    # xct: extra contact obs
     ENV_CFG = DPCombinedEnvConfig()
     """ 
 
