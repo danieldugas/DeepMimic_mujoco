@@ -252,7 +252,7 @@ if __name__ == "__main__":
     # train a policy
     # hyperparams
     EVAL_N = 500000
-    TOT = 200*M
+    TOT = 500*M
     N_AG = 32
     HRZ = 4096
     MINIB = 512
@@ -260,7 +260,8 @@ if __name__ == "__main__":
     LR = 0.0004
     LOG_FREQ = 1*M // N_AG # log every 1M global steps
 #     policy_kwargs = dict(net_arch=[1024, 512])
-    policy_kwargs = dict(net_arch=[256, 128])
+    policy_kwargs = dict(net_arch=[512, 256])
+#     policy_kwargs = dict(net_arch=[256, 128])
     # run info
     class Run:
         name = "test" + time.strftime("%Y%m%d-%H%M_%S")

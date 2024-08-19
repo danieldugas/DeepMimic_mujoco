@@ -25,6 +25,7 @@ class DPCombinedEnvConfig:
         self.FRC_OBS_SCALE = 0.001
         self.ADD_FOOT_CONTACT_OBS = False
         self.ADD_EXTRA_CONTACT_OBS = True
+        self.ACT_SCALE = 20.
         self.ADD_TORSO_OBS = True
         self.ADD_JOINT_FORCE_OBS = False
         self.ADD_ABSPOS_OBS = False
@@ -234,7 +235,7 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             act_timer = time.time()
         mujoco_action = action * 1.
         if self.robot == "unitree_g1":
-            mujoco_action = action * 20.
+            mujoco_action = action * self.ENV_CFG.ACT_SCALE
             if len(mujoco_action) == self.sim.data.ctrl.shape[0] - 14: # need to check because mujoco_env init does a step with full action space
                 mujoco_action = np.concatenate((mujoco_action, np.zeros(14))) # add 14 hand actions (0)
         assert len(mujoco_action) == self.sim.data.ctrl.shape[0]
