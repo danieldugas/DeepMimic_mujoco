@@ -1,9 +1,12 @@
 from extracted_policy import ExtractedPolicy
 from deepmimic_env import DPEnv
 import numpy as np
+import os
 
-def log_actobs(qlog, obs, a, r, frame, time, env_name, max_frames, enabled, ZEROACT, ONEACT):
+def log_actobs(qlog, obs, a, r, frame, time, env_name, max_frames, enabled, ZEROACT, ONEACT, folder=None):
     if enabled:
+        if folder is None:
+            folder = os.path.expanduser("~/deep_mimic/qlogs")
         postfix = ""
         if ZEROACT:
             a = np.zeros_like(a)
@@ -14,11 +17,12 @@ def log_actobs(qlog, obs, a, r, frame, time, env_name, max_frames, enabled, ZERO
         qlog.append([time] + [len(obs)] + list(obs) + [len(a)] + list(a) + [1] + [r])
         if len(qlog) >= max_frames:
             qlog = np.array(qlog)
-            path = "/home/daniel/{}_{}qlog.csv".format(env_name, postfix)
+            path = os.path.join(folder, "{}_{}qlog.csv".format(env_name, postfix))
             np.savetxt(path, qlog, delimiter=",")
             print("Log written to ", path)
             raise ValueError("Logged")
             return
+    return a
 
 if __name__ == "__main__":
     env = DPEnv()
