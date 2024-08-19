@@ -1,5 +1,5 @@
 from extracted_policy import ExtractedPolicy
-from dp_env_v3 import DPEnv
+from deepmimic_env import DPEnv
 import numpy as np
 
 def log_actobs(qlog, obs, a, r, frame, time, env_name, max_frames, enabled, ZEROACT, ONEACT):

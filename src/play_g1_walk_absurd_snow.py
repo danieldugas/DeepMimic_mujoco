@@ -5,6 +5,8 @@ import os
 from stable_baselines3 import PPO
 import torch as th
 
+from play_extracted import log_actobs
+
 if __name__ == "__main__":
     """ ABSURD SNOW 67 """
     env = DPEnv(motion="walk", robot="unitree_g1")
@@ -30,11 +32,13 @@ if __name__ == "__main__":
     print("this.mocap_start_frame = ", idx_init, ";")
     print("this.mocap_len = ", env.mocap.get_length(), ";")
     ep_rew = 0
+    qlog = []
     for i in range(1000):
         env.render(mode="human")
         obs_th = th.tensor(obs[None, :], dtype=th.float32)
         a_th, _, _ = model.policy.forward(obs_th, deterministic=True)
         a = a_th.detach().numpy()[0]
+        log_actobs(qlog, obs, a, ep_rew, i, env.get_time(), env_name="deepmimic_absurd_snow_f10", max_frames=100, enabled=False, ZEROACT=False, ONEACT=False)
         obs, reward, done, info = env.step(a)
         ep_rew += reward
         if done:
