@@ -95,11 +95,11 @@ class MTToGetup(MotionTransition):
     def __init__(self, getup_mocap):
         self.target_mocap = getup_mocap
         self.motion_name = "to_getup"
-        self.length = 120
+        self.length = 240
 
 
 class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.2.sas_norun"
+    version = "v0.2.sas_togetup"
     # pgs: pa_getup_state (tells the model to get up)
     # xct: extra contact obs
     # sas: scale action space
@@ -211,12 +211,16 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 #             self.current_player_action = PAWalk()
 #             self.current_motion_n_steps = random.randint(0, self.current_motion_mocap.get_length() - 1)
             # if rmi: # start with any motion
-            if True: # NO_RUNNING
-                self.current_motion_mocap = [self.getup_mocap, self.walk_mocap][random.randint(0, 1)]
-            else:
-                self.current_motion_mocap = [self.getup_mocap, self.walk_mocap, self.run_mocap][random.randint(0, 2)]
-            self.current_player_action = PARun() if self.current_motion_mocap == self.run_mocap else PAWalk()
-            self.current_motion_n_steps = random.randint(0, self.current_motion_mocap.get_length() - 1)
+#             if True: # NO_RUNNING
+#                 self.current_motion_mocap = [self.getup_mocap, self.walk_mocap][random.randint(0, 1)]
+#             else:
+#                 self.current_motion_mocap = [self.getup_mocap, self.walk_mocap, self.run_mocap][random.randint(0, 2)]
+#             self.current_player_action = PARun() if self.current_motion_mocap == self.run_mocap else PAWalk()
+#             self.current_motion_n_steps = random.randint(0, self.current_motion_mocap.get_length() - 1)
+            # to_getup
+            self.current_motion_mocap = self.walk_mocap
+            self.current_player_action = PAWalk()
+            self.current_motion_n_steps = 160 # enough for amnesty
         else:
             self.current_motion_mocap = self.getup_mocap
             self.current_motion_n_steps = 0
