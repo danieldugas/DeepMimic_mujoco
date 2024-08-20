@@ -99,9 +99,10 @@ class MTToGetup(MotionTransition):
 
 
 class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.2.rmi_pgs_xct"
+    version = "v0.2.sas_norun"
     # pgs: pa_getup_state (tells the model to get up)
     # xct: extra contact obs
+    # sas: scale action space
     ENV_CFG = DPCombinedEnvConfig()
     """ 
 
@@ -191,7 +192,10 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         # action space: remove last 14 dims (hand actions)
         if self.robot == "unitree_g1":
             N = self.action_space.shape[0] - 14
-            self.action_space = Box(low=self.action_space.low[:N], high=self.action_space.high[:N])
+            self.action_space = Box(
+                low=self.action_space.low[:N] / self.ENV_CFG.ACT_SCALE,
+                high=self.action_space.high[:N] / self.ENV_CFG.ACT_SCALE
+            )
         
     def get_current_motion_state(self):
         current_mocap_idx = self.current_motion_n_steps % self.current_motion_mocap.get_length()
@@ -207,7 +211,10 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 #             self.current_player_action = PAWalk()
 #             self.current_motion_n_steps = random.randint(0, self.current_motion_mocap.get_length() - 1)
             # if rmi: # start with any motion
-            self.current_motion_mocap = [self.getup_mocap, self.walk_mocap, self.run_mocap][random.randint(0, 2)]
+            if True: # NO_RUNNING
+                self.current_motion_mocap = [self.getup_mocap, self.walk_mocap][random.randint(0, 1)]
+            else:
+                self.current_motion_mocap = [self.getup_mocap, self.walk_mocap, self.run_mocap][random.randint(0, 2)]
             self.current_player_action = PARun() if self.current_motion_mocap == self.run_mocap else PAWalk()
             self.current_motion_n_steps = random.randint(0, self.current_motion_mocap.get_length() - 1)
         else:
@@ -275,13 +282,14 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         if self.PROFILE:
             pa_start = time.time()
         next_player_action = self.current_player_action
-        is_player_action_change = False
-        AVG_STEPS_TO_PA_CHANGE = 500
         # funny enough, the discrete probability function mean, which is:
         # \sum _{k=0}^{\infty \:}\left(k\left(1-q\right)^k\left(q\right)\right)
         # \sum _{k=0}^{\infty \:}\left(k\left(1-0.01\right)^k\left(0.01\right)\right) <- wolfram alpha solves this: =99
         # is N_STEPS when q ~= 1 / N_STEPS
-        if np.random.rand() < (1. / AVG_STEPS_TO_PA_CHANGE): # player input on average every 500 steps
+        AVG_STEPS_TO_PA_CHANGE = 500
+#         is_player_action_change = np.random.rand() < (1. / AVG_STEPS_TO_PA_CHANGE)
+        is_player_action_change = False # NO_RUNNING
+        if is_player_action_change: # player input on average every 500 steps
             next_player_action = PARun() if isinstance(self.current_player_action, PAWalk) else PAWalk()
             is_player_action_change = True
         if self.PROFILE:
