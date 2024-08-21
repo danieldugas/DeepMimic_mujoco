@@ -32,6 +32,7 @@ class DPCombinedEnvConfig:
         self.ADD_PHASE_OBS = True
         self.ADD_PLAYER_ACTION_OBS = True
         self.MAX_PLAYER_ACTIONS = 3
+        self.AMNESTY_STEPS = 150
 
 # PlayerAction stores the information about the current player control
 class PlayerAction:
@@ -99,7 +100,7 @@ class MTToGetup(MotionTransition):
 
 
 class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.2.sas_togetup_r1"
+    version = "v0.2.sas_togetup_r1i1"
     # pgs: pa_getup_state (tells the model to get up)
     # xct: extra contact obs
     # sas: scale action space
@@ -220,7 +221,7 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             # to_getup
             self.current_motion_mocap = self.walk_mocap
             self.current_player_action = PAWalk()
-            self.current_motion_n_steps = 160 # enough for amnesty
+            self.current_motion_n_steps = self.ENV_CFG.AMNESTY_STEPS + 10 + random.randint(0, self.current_motion_mocap.get_length() - 1) # start with amnesty
         else:
             self.current_motion_mocap = self.getup_mocap
             self.current_motion_n_steps = 0
@@ -422,7 +423,7 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
                 if np.abs(curr_root_pitch - target_root_pitch) > MAX_ANGLE:
                     is_fallen = True
                 if is_fallen:
-                    has_earned_amnesty = self.current_motion_mocap in [self.walk_mocap, self.run_mocap] and self.current_motion_n_steps > 150
+                    has_earned_amnesty = self.current_motion_mocap in [self.walk_mocap, self.run_mocap] and self.current_motion_n_steps > self.ENV_CFG.AMNESTY_STEPS
                     if not has_earned_amnesty: # we allow falling only after some successfuly walking/running
                         done = True
                         info["done_reason"] = "fallen without amnesty"
