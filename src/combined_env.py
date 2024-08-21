@@ -32,6 +32,7 @@ class DPCombinedEnvConfig:
         self.ADD_PHASE_OBS = True
         self.ADD_PLAYER_ACTION_OBS = True
         self.MAX_PLAYER_ACTIONS = 3
+        self.AMNESTY_STEPS = 150
 
 # PlayerAction stores the information about the current player control
 class PlayerAction:
@@ -95,11 +96,11 @@ class MTToGetup(MotionTransition):
     def __init__(self, getup_mocap):
         self.target_mocap = getup_mocap
         self.motion_name = "to_getup"
-        self.length = 120
+        self.length = 180
 
 
 class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.2.sas_norun"
+    version = "v0.2.sas_norun_r1i1"
     # pgs: pa_getup_state (tells the model to get up)
     # xct: extra contact obs
     # sas: scale action space
@@ -211,12 +212,19 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 #             self.current_player_action = PAWalk()
 #             self.current_motion_n_steps = random.randint(0, self.current_motion_mocap.get_length() - 1)
             # if rmi: # start with any motion
-            if True: # NO_RUNNING
-                self.current_motion_mocap = [self.getup_mocap, self.walk_mocap][random.randint(0, 1)]
-            else:
-                self.current_motion_mocap = [self.getup_mocap, self.walk_mocap, self.run_mocap][random.randint(0, 2)]
-            self.current_player_action = PARun() if self.current_motion_mocap == self.run_mocap else PAWalk()
-            self.current_motion_n_steps = random.randint(0, self.current_motion_mocap.get_length() - 1)
+            randi = random.randint(0, 2)
+            if randi == 0: # 1/3 walk, no amnesty
+                self.current_motion_mocap = self.walk_mocap
+                self.current_motion_n_steps = random.randint(0, self.current_motion_mocap.get_length() - 1)
+                self.current_player_action = PAWalk()
+            elif randi == 1: # 1/3 fall and then get up
+                self.current_motion_mocap = self.walk_mocap
+                self.current_motion_n_steps = self.ENV_CFG.AMNESTY_STEPS + 10 + random.randint(0, self.current_motion_mocap.get_length() - 1)
+                self.current_player_action = PAWalk()
+            else: # 1/3 run, get up
+                self.current_motion_mocap = self.getup_mocap
+                self.current_motion_n_steps = random.randint(0, self.current_motion_mocap.get_length() - 1)
+                self.current_player_action = PAWalk()
         else:
             self.current_motion_mocap = self.getup_mocap
             self.current_motion_n_steps = 0
@@ -322,6 +330,7 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             wp, wv, we, wc, wj,
             self.sim.data, self.model, self.current_motion_mocap, mocap_step_idx, self.ENV_CFG, self.robot_config, info
         )
+        mass, curr_root_roll, target_root_roll, curr_root_pitch, target_root_pitch, config_angle_diffs = intermediate_values
         # task reward
         task_reward = 0.0
         if self.current_motion_mocap == self.walk_mocap or self.current_motion_mocap == self.run_mocap:
@@ -332,6 +341,11 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             freejoint_vel = self.sim.data.qvel[:2]
             heading_and_vel_error = np.linalg.norm(target_vel - freejoint_vel)
             task_reward = np.exp(-heading_and_vel_error * 10.) # error 0.5m/s, reward = 0.006 # error 0.1m/s, reward = 0.367
+        if self.current_motion_mocap == self.to_getup_mocap:
+            # for to-get-up, only look at matching the config angles (no velocity reward)
+            imitation_reward = 0.0
+            config_error = np.sum(np.abs(config_angle_diffs)) + (np.abs(curr_root_pitch - target_root_pitch)) + (np.abs(curr_root_roll - target_root_roll))
+            task_reward = np.exp(-config_error / 5.) / 3. # config error ~= 20 (1 rad per joint) -> exp term ~= 0.01
         wi = 0.7
         wt = 0.3
         reward = imitation_reward * wi + task_reward * wt
@@ -392,7 +406,6 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
                     if isinstance(next_player_action, PAWalk):
                         self.change_to_motion(self.walk_mocap)
             ALIM = np.deg2rad(15)
-            mass, curr_root_roll, target_root_roll, curr_root_pitch, target_root_pitch, config_angle_diffs = intermediate_values
             is_pitch_close = np.abs(curr_root_pitch - target_root_pitch) < ALIM
             is_roll_close = np.abs(curr_root_roll - target_root_roll) < ALIM
             is_angle_diff_close = np.all(np.abs(config_angle_diffs) < ALIM)
@@ -413,7 +426,7 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
                 if np.abs(curr_root_pitch - target_root_pitch) > MAX_ANGLE:
                     is_fallen = True
                 if is_fallen:
-                    has_earned_amnesty = self.current_motion_mocap in [self.walk_mocap, self.run_mocap] and self.current_motion_n_steps > 150
+                    has_earned_amnesty = self.current_motion_mocap in [self.walk_mocap, self.run_mocap] and self.current_motion_n_steps > self.ENV_CFG.AMNESTY_STEPS
                     if not has_earned_amnesty: # we allow falling only after some successfuly walking/running
                         done = True
                         info["done_reason"] = "fallen without amnesty"
