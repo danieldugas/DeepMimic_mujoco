@@ -99,7 +99,7 @@ class MTToGetup(MotionTransition):
 
 
 class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.2.sas_togetup"
+    version = "v0.2.sas_togetup_r1"
     # pgs: pa_getup_state (tells the model to get up)
     # xct: extra contact obs
     # sas: scale action space
@@ -326,6 +326,7 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             wp, wv, we, wc, wj,
             self.sim.data, self.model, self.current_motion_mocap, mocap_step_idx, self.ENV_CFG, self.robot_config, info
         )
+        mass, curr_root_roll, target_root_roll, curr_root_pitch, target_root_pitch, config_angle_diffs = intermediate_values
         # task reward
         task_reward = 0.0
         if self.current_motion_mocap == self.walk_mocap or self.current_motion_mocap == self.run_mocap:
@@ -336,6 +337,11 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             freejoint_vel = self.sim.data.qvel[:2]
             heading_and_vel_error = np.linalg.norm(target_vel - freejoint_vel)
             task_reward = np.exp(-heading_and_vel_error * 10.) # error 0.5m/s, reward = 0.006 # error 0.1m/s, reward = 0.367
+        if self.current_motion_mocap == self.to_getup_mocap:
+            # for to-get-up, only look at matching the config angles (no velocity reward)
+            imitation_reward = 0.0
+            config_error = np.sum(np.abs(config_angle_diffs)) + (np.abs(curr_root_pitch - target_root_pitch)) + (np.abs(curr_root_roll - target_root_roll))
+            task_reward = np.exp(-config_error / 5.) / 3. # config error ~= 20 (1 rad per joint) -> exp term ~= 0.01
         wi = 0.7
         wt = 0.3
         reward = imitation_reward * wi + task_reward * wt
@@ -396,7 +402,6 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
                     if isinstance(next_player_action, PAWalk):
                         self.change_to_motion(self.walk_mocap)
             ALIM = np.deg2rad(15)
-            mass, curr_root_roll, target_root_roll, curr_root_pitch, target_root_pitch, config_angle_diffs = intermediate_values
             is_pitch_close = np.abs(curr_root_pitch - target_root_pitch) < ALIM
             is_roll_close = np.abs(curr_root_roll - target_root_roll) < ALIM
             is_angle_diff_close = np.all(np.abs(config_angle_diffs) < ALIM)
