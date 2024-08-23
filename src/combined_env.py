@@ -96,14 +96,15 @@ class MTToGetup(MotionTransition):
     def __init__(self, getup_mocap):
         self.target_mocap = getup_mocap
         self.motion_name = "to_getup"
-        self.length = 240
+        self.length = 180
 
 
 class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    version = "v0.2.sas_togetup_r1i1"
+    version = "v0.2.up"
     # pgs: pa_getup_state (tells the model to get up)
     # xct: extra contact obs
     # sas: scale action space
+    # up: random fall, then togetup, then getup
     ENV_CFG = DPCombinedEnvConfig()
     """ 
 
@@ -219,9 +220,15 @@ class DPCombinedEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 #             self.current_player_action = PARun() if self.current_motion_mocap == self.run_mocap else PAWalk()
 #             self.current_motion_n_steps = random.randint(0, self.current_motion_mocap.get_length() - 1)
             # to_getup
-            self.current_motion_mocap = self.walk_mocap
-            self.current_player_action = PAWalk()
-            self.current_motion_n_steps = self.ENV_CFG.AMNESTY_STEPS + 10 + random.randint(0, self.current_motion_mocap.get_length() - 1) # start with amnesty
+            randi = random.randint(0, 1)
+            if randi == 0:
+                self.current_motion_mocap = self.walk_mocap
+                self.current_player_action = PAWalk()
+                self.current_motion_n_steps = self.ENV_CFG.AMNESTY_STEPS + 10 + random.randint(0, self.current_motion_mocap.get_length() - 1) # start with amnesty
+            else:
+                self.current_motion_mocap = self.getup_mocap
+                self.current_player_action = PAWalk()
+                self.current_motion_n_steps = random.randint(0, self.current_motion_mocap.get_length() - 1) # start with amnesty
         else:
             self.current_motion_mocap = self.getup_mocap
             self.current_motion_n_steps = 0
